@@ -1,0 +1,34 @@
+1. Import der Imspector-Messungen nach Python (https://pypi.org/project/specpy/)
+  - raussuchen der richtigen Kanäle (*) , Problem mit specpy Stacknamen (manual neu abspeichern)
+
+- Separierung in ganze Zellen
+  - Maske auf ursprüngliche Bilder für jede Zelle (*)
+  - Code: cell-separation/single_cell_separation.py
+
+- Optional: Crosstalk der Detektionskanäle bestimmen und wenn vorhanden, rausrechnen
+
+2. Mito-Kanal: Maske erstellen (*)
+  - Bestimmen der Auflösung (nur einmal)
+  - Rauschen entfernen (*)
+  - Out-of-Fokus Background entfernen (*)
+  - Adaptiver Threshold (manuell einstellen) (*)
+  - Code: mito-threshold/mask_from_mito_channel_more-img_superthreshold.py
+  - geplant: GUI, um Parameter des Thresholdings besser einstellen zu können
+
+3. Bax-Kanal:
+  - Bestimmen der Auflösung
+  - Rauschen entfernen (*)
+  - Out-of-Fokus Background entfernen (*)
+  - Detektion von Clustern (klein, eher rund, hell) (*)
+  - Detektion von Ringen (mittelklein, mit einem Loch, nicht viel drumherum, eher dunkel, eher in der Nähe von Mitos)
+  - Nebenprodukt sind Linien (nicht-geschlossene Ringe, oder Bögen, Us oder gerade Linien, nicht zuviele Abzweigungen)
+  - Detektion von komplexen Netzwerken (linienerkennung)
+  - Müssen Verzweigungen (verzweigte Linien ohne Löcher) noch als komplex berücksichtigt werden??
+  - Sind Cluster isoliert oder Teil einer anderen Struktur (Ring, Netzwerk)
+  - Unspezifisch (nichts von dem oben??)
+  - Code: bax_phenotype.py
+
+4. Statistik
+  - Quantifizierung der Cluster, Ringe, Netzwerke, Sonstiges nach Mitonähe (alles was Überlapp mit Mitos hat ist in Mitonähe, alles andere nicht)
+  - Korrelation mit Mutation und Signifikanztest
+
