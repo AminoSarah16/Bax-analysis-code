@@ -55,12 +55,16 @@ def extract_image_from_imspector_stack(stack):
 
     return data, pixel_sizes
 
-# Concatenating colormaps
-custom_colormap = mpl.colors.LinearSegmentedColormap.from_list('custom',
+# our colormaps
+green_on_black_colormap = mpl.colors.LinearSegmentedColormap.from_list('custom',
                                              [(0,    'black'),
                                               (1,    'Green')], N=255)
+magenta_on_black_colormap = mpl.colors.LinearSegmentedColormap.from_list('custom',
+                                             [(0,    'black'),
+                                              (1,    'Magenta')], N=255)
 
-def display_image(image, title):
+
+def display_image(image, title, cmaps=('rainbow',)):
     """
     kann jetzt ein oder mehrere Bilder gleichzeitig darstellen
     :param image: image to display
@@ -76,10 +80,14 @@ def display_image(image, title):
     if not isinstance(axes, np.ndarray):
         axes = (axes,) # muss auch für axes gemacht werden
     for i in range(n):
-        # axes[i].imshow(image[i], cmap=custom_colormap)   # TODO colortable auswählbar machen
-        axes[i].imshow(image[i], cmap='rainbow')
+        axes[i].imshow(image[i], cmap=cmaps[i])
         axes[i].set_title(title[i])
     plt.show()
+
+
+def scale_to_255(image):
+    return image / np.amax(image) * 2550
+
 
 def denoise_image(image, sigma=2):
 

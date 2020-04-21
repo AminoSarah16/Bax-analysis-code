@@ -17,6 +17,14 @@ s1 = ndimage.morphology.generate_binary_structure(2, 2)  # 3x3 block
 s2 = ndimage.morphology.generate_binary_structure(2, 1)  # 3x3 cross
 
 def detect_cluster(denoised, pixel_sizes):
+    '''
+    Detektiert einzelne Cluster
+
+    :param denoised:
+    :param pixel_sizes:
+    :return:
+    '''
+
     # maske erstellen
     maske = denoised > 15  # TODO anpassen auf die anderen Bilder
 
@@ -73,7 +81,7 @@ def skeletonize_and_detect_holes(mask):
     return skel_label, skel_number, skeleton_statistics
 
 
-def detect_structures(denoised, pixel_sizes, cluster_mask):
+def detect_structures(denoised, pixel_sizes):
 
     # segmentieren mit kleineren threshold
     maske = denoised > 1.5
@@ -134,7 +142,7 @@ def detect_structures(denoised, pixel_sizes, cluster_mask):
         print('id {}: {}'.format(i, holes_statistics[i, :]))
 
 
-def load_bax_image(file_path):
+def detect_bax_structures(file_path):
 
     # bax stack laden
     bax_stacks = read_stack_from_imspector_measurement(file_path, 'STAR RED_STED')
@@ -144,17 +152,19 @@ def load_bax_image(file_path):
         return
     stack = bax_stacks[0]
 
-    image, pixel_sizes = extract_image_from_imspector_stack(stack) #in den utils zu finden
-
-    # display_image(image, 'bax original')
-
+    # Daten des bax stacks und Rauschen entfernen
+    image, pixel_sizes = extract_image_from_imspector_stack(stack)  # in den utils zu finden
     denoised = denoise_image(image)
 
     # cluster detektieren
     cluster_mask = detect_cluster(denoised, pixel_sizes)
+    display_image(cluster_mask, 'cluster')
+
+    # display
+    # display_image((scale_to_255(image), scale_to_255(denoised), cluster_mask), ('original', 'denoised', 'cluster'), (green_on_black_colormap, green_on_black_colormap, 'rainbow'))
 
     # strukturen detektieren
-    structures = detect_structures(denoised, pixel_sizes, cluster_mask)
+    structures = detect_structures(denoised, pixel_sizes)
 
 
 
@@ -168,6 +178,6 @@ if __name__ == '__main__':
             print(filename)
 
             file_path = os.path.join(root_path, filename)
-            output = load_bax_image(file_path)
+            output = detect_bax_structures(file_path)
 
             break  # for testing purposes only the first measurement
