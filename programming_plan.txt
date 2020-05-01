@@ -37,10 +37,10 @@
 4. Quantifizierung:
     der Cluster, Ringe, Netzwerke, Sonstiges nach Mitonähe
   - Mitonähe (muss vorher Mitomaske laden):
-        - Prozentzahl des Überlapps
+        - Prozentzahl des Überlapps der Fläche der STRUKTUR
         - Distanz vom Mittelpunkt der Struktur zum nächsten Mito (Abstand 0 is wsl hoher Überlapp)
   - Speichern: als liste von werten
-  - Code: bax_phenotype.py
+  - Code: bax-mito-overlap.py
 
 5. Statistik
   - Laden der Ergebnisse aller Messungen

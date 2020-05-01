@@ -64,7 +64,7 @@ def skeletonize_and_detect_holes(mask):
         e = e[e > 1] # ignore 0 (pixel shifted is on another pixel of the skeleton) and 1 (big hole welches nicht zählt)
 
         # f enthält die Nummern der Löcher des Skeletons
-        f = np.unique(e)
+        holes = np.unique(e)
 
         # Anzahl der Skeleton pixel an den Löchern
         number_pixel_around_hole = np.sum((a > 1) | (b > 1) | (c > 1) | (d > 1))
@@ -72,10 +72,10 @@ def skeletonize_and_detect_holes(mask):
 
         # Anzahl der Pixel in allen Löchern
         number_pixel_in_holes = 0
-        for j in range(len(f)):
-            number_pixel_in_holes += np.sum(holes_label == f[j])
+        for j in range(len(holes)):
+            number_pixel_in_holes += np.sum(holes_label == holes[j])
 
-        skeleton_statistics[i, :] = [f.size, pixel_around_holes_ratio, number_pixel_in_holes, number_pixel_skeleton]   # Anzahl der Löcher, Verhältnis Pixel des Skeletons an einem Loch zu Gesamtzahl, Gesamtfläche der Löcher in Pixeln
+        skeleton_statistics[i, :] = [holes.size, pixel_around_holes_ratio, number_pixel_in_holes, number_pixel_skeleton]   # Anzahl der Löcher, Verhältnis Pixel des Skeletons an einem Loch zu Gesamtzahl, Gesamtfläche der Löcher in Pixeln
 
 
     return skel_label, skel_number, skeleton_statistics
@@ -103,7 +103,7 @@ def detect_structures(denoised, pixel_sizes):
     # Löcher detektieren und klassifizieren
     skel_label, skel_number, holes_statistics = skeletonize_and_detect_holes(skel_label != 0)
 
-    # copy lines to another array
+    # copy lines to another array, um sie nochmal testen zu können
     lines = np.zeros(skel_label.shape)
     for i in range(1, skel_number + 1):
         m = skel_label == i
@@ -116,8 +116,11 @@ def detect_structures(denoised, pixel_sizes):
     for i in range(10):
         lines = morphology.binary_dilation(lines, s2)
     lines = morphology.skeletonize(lines)
+    # TODO falls es wesentlich weniger Pixel werden bei manchen Linien, dann hat der Skeletonalgorithmus sie zusammengezogen, das wollen wir eher nicht und
+    # sollten diese vielleicht wiederherstellen
 
     lines_skel_label, _, _ = skeletonize_and_detect_holes(lines)
+
 
     skel_label, skel_number, holes_statistics = skeletonize_and_detect_holes((skel_label > 0) | (lines_skel_label > 0))
 
@@ -127,13 +130,15 @@ def detect_structures(denoised, pixel_sizes):
     for i in range(1, skel_number + 1):
         m = skel_label == i
         if holes_statistics[i, 0] == 0:  # kein Loch -> Linie
-            typ = 1
-        elif holes_statistics[i, 0] == 1 and holes_statistics[i, 1] > 0.5: # ein Loch und nicht zuviel drum herum
-            typ = 2
+            typ = 1 # Linie
+        elif holes_statistics[i, 0] == 1 and holes_statistics[i, 1] > 0.5: # ein Loch und nicht zuviel drum herum = Ring
+            typ = 2 # Ring
         else:  # komnplexe Struktur ist der gesamte rest
-            typ = 3
+            typ = 3 # Komnplex
         classified_skeletons[m] = typ
         holes_statistics[i, 4] = typ
+
+    display_image((skeleton, skel_label > 0), ('erster skeleton', 'final'))
 
     display_image((classified_skeletons, skel_label), ('type of skeletons', 'labelled skeletons'))
 
@@ -141,8 +146,12 @@ def detect_structures(denoised, pixel_sizes):
     for i in range(1, holes_statistics.shape[0]):
         print('id {}: {}'.format(i, holes_statistics[i, :]))
 
+    return classified_skeletons, skel_label, holes_statistics
 
-def detect_bax_structures(file_path):
+
+def detect_bax_structures(root_path, filename, bax_path):
+
+    file_path = os.path.join(root_path, filename)
 
     # bax stack laden
     bax_stacks = read_stack_from_imspector_measurement(file_path, 'STAR RED_STED')
@@ -160,24 +169,45 @@ def detect_bax_structures(file_path):
     cluster_mask = detect_cluster(denoised, pixel_sizes)
     display_image(cluster_mask, 'cluster')
 
+    # save cluster maske
+    output_path = os.path.join(bax_path, filename[:-4] + '.cluster.tiff')
+    img = Image.fromarray(cluster_mask)
+    img.save(output_path, format='tiff')
+
     # display
     # display_image((scale_to_255(image), scale_to_255(denoised), cluster_mask), ('original', 'denoised', 'cluster'), (green_on_black_colormap, green_on_black_colormap, 'rainbow'))
 
     # strukturen detektieren
-    structures = detect_structures(denoised, pixel_sizes)
+    classified_skeletons, skel_label, holes_statistics = detect_structures(denoised, pixel_sizes)
 
+    # store detected structures
 
+    # save structures type (1,2,3) (classified_skeletons)
+    output_path = os.path.join(bax_path, filename[:-4] + '.structures-type.tiff')
+    img = Image.fromarray(classified_skeletons)
+    img.save(output_path, format='tiff')
+
+    # save structures id (skel_label)
+    output_path = os.path.join(bax_path, filename[:-4] + '.structures-id.tiff')
+    img = Image.fromarray(skel_label)
+    img.save(output_path, format='tiff')
+
+    # save structures statistics (holes_statistics)
+    output_path = os.path.join(bax_path, filename[:-4] + '.structures.csv')
+    np.savetxt(output_path, holes_statistics, delimiter=',', fmt='%f')
 
 
 if __name__ == '__main__':
 
     root_path = r'C:\Users\Sarah\Documents\Python\Bax-analysis\IF36_selected-for-analysis-with-Jan'
+    bax_path = os.path.join(root_path, 'results', 'bax-structures')
+    if not os.path.isdir(bax_path):
+        os.makedirs(bax_path)
 
     for filename in os.listdir(root_path):  # ich erstelle eine Liste mit den Filenames in dem Ordner
         if filename.endswith(".msr"):  # wenn die Endung .msr ist, dann mach was damit, nämlich:
             print(filename)
 
-            file_path = os.path.join(root_path, filename)
-            output = detect_bax_structures(file_path)
+            detect_bax_structures(root_path, filename, bax_path)
 
             break  # for testing purposes only the first measurement

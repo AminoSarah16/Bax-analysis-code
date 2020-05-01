@@ -64,7 +64,7 @@ magenta_on_black_colormap = mpl.colors.LinearSegmentedColormap.from_list('custom
                                               (1,    'Magenta')], N=255)
 
 
-def display_image(image, title, cmaps=('rainbow',)):
+def display_image(image, title, cmaps=('rainbow',)*10):
     """
     kann jetzt ein oder mehrere Bilder gleichzeitig darstellen
     :param image: image to display
