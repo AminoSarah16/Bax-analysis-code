@@ -52,7 +52,7 @@ if __name__ == '__main__':
     # iteriere über alle Messungen
 
     # alle Einstellungen
-    root_path = r'C:\Users\Sarah\Documents\Python\Bax-analysis\IF36_selected-for-analysis-with-Jan'
+    root_path = get_root_path()
     mask_path = os.path.join(root_path, 'results', 'mito-masks')
     if not os.path.isdir(mask_path):
         os.makedirs(mask_path)

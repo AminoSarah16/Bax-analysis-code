@@ -1,22 +1,21 @@
-import os
-from PIL import Image  # https://pillow.readthedocs.io/en/stable/handbook/index.html
-import numpy as np
-import matplotlib.pyplot as plt
-import scipy.ndimage as ndimage
-import h5py  # https://docs.h5py.org/en/stable/
-
-'''
+"""
 Finden der Segmentierungslinien im tif Bild (gelb: 255,255,0) und abspeichern als HDF5 File fomrat
 Sarah probiert im Code herum
 Warum ist es so langsam und kann man es schneller machen? FIJI plugin kann Hdf5 nicht lesen..
-'''
+"""
+
+import os
+from PIL import Image  # https://pillow.readthedocs.io/en/stable/handbook/index.html
+from utils.utils import *
 
 separation_color = np.array([255, 255, 0])  # gelb
 file_ending = "overlay_sgmt.tif"
 
 if __name__ == '__main__':
+
     # Pfade
-    root_path = r'C:\Users\Sarah\Documents\Python\Bax-analysis\IF36_selected-for-analysis-with-Jan'
+    root_path = get_root_path()
+    print(root_path)
     mask_path = os.path.join(root_path, 'results', 'cell-masks')
     if not os.path.isdir(mask_path):
         os.makedirs(mask_path)

@@ -1,5 +1,5 @@
 """
-Hilfsfuntkionen für alle Skripte.
+Hilfsfunktionen für alle Skripte.
 """
 
 import specpy as sp
@@ -7,6 +7,15 @@ import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import scipy.ndimage as ndimage
+import configparser
+
+def get_root_path():
+    """
+    Retrieves the root path
+    """
+    config = configparser.ConfigParser()
+    config.read('../bax-analysis.ini')
+    return config['general']['root-path']
 
 def read_stack_from_imspector_measurement(file_path, name_part):
     """

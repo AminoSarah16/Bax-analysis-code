@@ -74,7 +74,7 @@ def compute_things(mito_mask, bax_clusters, bax_structures, bax_statistics):
 
 if __name__ == '__main__':
 
-    root_path = r'C:\Users\Sarah\Documents\Python\Bax-analysis\IF36_selected-for-analysis-with-Jan'
+    root_path = get_root_path()
     mask_path = os.path.join(root_path, 'results', 'mito-masks')
     bax_path = os.path.join(root_path, 'results', 'bax-structures')
 

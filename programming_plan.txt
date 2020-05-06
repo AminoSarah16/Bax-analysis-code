@@ -1,52 +1,52 @@
 1. Import der Imspector-Messungen nach Python (https://pypi.org/project/specpy/)
-  - raussuchen der richtigen Kanäle (*) , Problem mit specpy Stacknamen (manual neu abspeichern)
+  - raussuchen der richtigen KanÃ¤le (*), Problem mit specpy Stacknamen (manual neu abspeichern)
 
 - Separierung in ganze Zellen
-  - Maske auf ursprüngliche Bilder für jede Zelle (*)
+  - Maske auf ursprÃ¼ngliche Bilder fÃ¼r jede Zelle (*)
   - Speichern als tif bild in results/cell-masks
   - Code: cell-separation/single_cell_separation.py
 
-- Optional: Crosstalk der Detektionskanäle bestimmen und wenn vorhanden, rausrechnen
+- Optional: Crosstalk der DetektionskanÃ¤le bestimmen und wenn vorhanden, rausrechnen
 
 2. Mito-Kanal: Maske erstellen (*)
-  - Bestimmen der Auflösung (nur einmal)
+  - Bestimmen der AuflÃ¶sung (nur einmal)
   - Rauschen entfernen (*)
   - Out-of-Fokus Background entfernen (*)
   - Adaptiver Threshold (manuell einstellen) (*)
-  - auch Zellfläche erkennen (niedrigerer Threshold auf unspezifischen Zellhintergrund)
+  - auch ZellflÃ¤che erkennen (niedrigerer Threshold auf unspezifischen Zellhintergrund)
   - Speichern: .tiff und hdf5
   - Code: mito-threshold/mito_detection.py
-  - geplant: GUI, um Parameter des Thresholdings besser einstellen zu können
+  - geplant: GUI, um Parameter des Thresholdings besser einstellen zu kÃ¶nnen
 
 3. Bax-Kanal:
-  - Bestimmen der Auflösung
+  - Bestimmen der AuflÃ¶sung
   - Rauschen entfernen (*)
   - Out-of-Fokus Background entfernen (*)
-  - Detektion von Clustern (klein, eher rund, hell) (*) Threshold auf Größe
-  - Detektion von Ringen (mittelklein, mit einem Loch, nicht viel drumherum, eher dunkel, eher in der Nähe von Mitos)
-  - Nebenprodukt sind Linien (nicht-geschlossene Ringe, oder Bögen, Us oder gerade Linien, nicht zuviele Abzweigungen)
+  - Detektion von Clustern (klein, eher rund, hell) (*) Threshold auf GrÃ¶ÃŸe
+  - Detektion von Ringen (mittelklein, mit einem Loch, nicht viel drumherum, eher dunkel, eher in der NÃ¤he von Mitos)
+  - Nebenprodukt sind Linien (nicht-geschlossene Ringe, oder BÃ¶gen, Us oder gerade Linien, nicht zuviele Abzweigungen)
   - Detektion von komplexen Netzwerken (linienerkennung)
-  - Müssen Verzweigungen (verzweigte Linien ohne Löcher) noch als komplex berücksichtigt werden?? voerst nein, und wer5den momentan als Linien gezählt
-  - Sind Cluster isoliert oder Teil einer anderen Struktur (Ring, Netzwerk) Ja und einzeln zählen und nach Größe sortieren. Aber Skeletons werden nicht unterbrochen, falls Cluster vorhanden.
+  - MÃ¼ssen Verzweigungen (verzweigte Linien ohne LÃ¶cher) noch als komplex berÃ¼cksichtigt werden?? voerst nein, und wer5den momentan als Linien gezÃ¤hlt
+  - Sind Cluster isoliert oder Teil einer anderen Struktur (Ring, Netzwerk) Ja und einzeln zÃ¤hlen und nach GrÃ¶ÃŸe sortieren. Aber Skeletons werden nicht unterbrochen, falls Cluster vorhanden.
   - Unspezifisch (nichts von dem oben??) Sollte es nicht mehr geben
   - Check: Sind wir uns sicher, dass wir Cluster nicht auch als andere Struktur nochmal erkennen?
   - Speichern:
     - als Bild: Colorcode nach Type (also nur 3 Farben oder so) .tiff .hdf5
-    - als Liste von nummerierten Objekten mit Typnummer, Statistik und zugehöriger Liste von Pixeln als .json file
+    - als Liste von nummerierten Objekten mit Typnummer, Statistik und zugehÃ¶riger Liste von Pixeln als .json file
 
 4. Quantifizierung:
-    der Cluster, Ringe, Netzwerke, Sonstiges nach Mitonähe
-  - Mitonähe (muss vorher Mitomaske laden):
-        - Prozentzahl des Überlapps der Fläche der STRUKTUR
-        - Distanz vom Mittelpunkt der Struktur zum nächsten Mito (Abstand 0 is wsl hoher Überlapp)
+    der Cluster, Ringe, Netzwerke, Sonstiges nach MitonÃ¤he
+  - MitonÃ¤he (muss vorher Mitomaske laden):
+        - Prozentzahl des Ãœberlapps der FlÃ¤che der STRUKTUR
+        - Distanz vom Mittelpunkt der Struktur zum nÃ¤chsten Mito (Abstand 0 is wsl hoher Ãœberlapp)
   - Speichern: als liste von werten
   - Code: bax-mito-overlap.py
 
 5. Statistik
   - Laden der Ergebnisse aller Messungen
-    - normieren auf Zellgröße?
+    - normieren auf ZellgrÃ¶ÃŸe?
     - Einzelergebnisse auflisten pro Zelle? Ja, weil das gibt mir den Fehlerbalken
-  - Aufaddieren für alle Bedingungen
+  - Aufaddieren fÃ¼r alle Bedingungen
   - Signifikanztest
   - Ausgabe in Excel oder Textfile
 
