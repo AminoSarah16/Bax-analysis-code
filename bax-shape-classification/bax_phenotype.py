@@ -11,11 +11,8 @@ import scipy.ndimage as ndimage
 import skimage.filters as filters
 import skimage.morphology as morphology
 import cv2
+import time
 from utils.utils import *
-
-s1 = ndimage.morphology.generate_binary_structure(2, 2)  # 3x3 block
-s2 = ndimage.morphology.generate_binary_structure(2, 1)  # 3x3 cross
-
 
 def detect_cluster(denoised, pixel_sizes):
     '''
@@ -28,26 +25,38 @@ def detect_cluster(denoised, pixel_sizes):
 
     # maske erstellen
     maske = denoised > 15  # TODO anpassen auf die anderen Bilder
+    minimal_area = 3.14 * (0.1)**2 # cluster müssen mindestens eine fläche von 100nm2PI haben
 
     # labeln der cluster-segment und größe pro segment
     labeled_mask, number_clusters = ndimage.measurements.label(maske)
+    objects = ndimage.measurements.find_objects(labeled_mask)
 
-    for i in range(1, number_clusters + 1):
-        cluster_pixelsum = np.sum(labeled_mask == i)
+    # filter by cluster area
+    start = time.time()
+    for i in range(number_clusters):
+        obj = objects[i]
+        m = labeled_mask[obj[0], obj[1]]  # das Rechteck, welches den Cluster i+1 enthält, ausschneiden
+        cluster_pixelsum = np.sum(m == i + 1)  # Anzahl der Pixel in diesem Rechteck, die wen Wert i+1 haben, zählen
         cluster_area = cluster_pixelsum * pixel_sizes[0] * pixel_sizes[1]
+        if cluster_area < minimal_area:
+            m[m == i + 1] = 0  # alle Pixel, in dem Recheck, die den Wert i+1 haben, löschen
+            labeled_mask[obj[0], obj[1]] = m  # das Rechteck in das gelabelten Bild wieder einsetzen
         # print('cluster {} contains {} pixels, area = {} µm²'.format(i, cluster_pixelsum, cluster_area))
+    print('das dauerte jetzt {}s'.format(time.time() - start))
 
-    # display_image(maske, 'bax cluster')
+    labeled_mask, number_clusters = ndimage.measurements.label(labeled_mask > 0)
+
+    # display_image((maske, labeled_mask), ('bax cluster', 'area filtered'))
 
     return labeled_mask
 
 
 def skeletonize_and_detect_holes(mask):
     # skeleton berechnen
-    skel_label, skel_number = ndimage.measurements.label(mask, structure=s1)
+    skel_label, skel_number = ndimage.measurements.label(mask, structure=structuring_element_block)
 
     # labeln der Löcher
-    holes_label, holes_number = ndimage.measurements.label(skel_label == 0, structure=s2)
+    holes_label, holes_number = ndimage.measurements.label(skel_label == 0, structure=structuring_element_cross)
 
     # zählen der löcher pro skeleton
     skeleton_statistics = np.zeros((skel_number+1, 4))
@@ -94,7 +103,7 @@ def detect_structures(denoised, pixel_sizes):
     skeleton = morphology.skeletonize(maske)
 
     # labeln des skeletons und bereinigen um kleine skeletons
-    skel_label, skel_number = ndimage.measurements.label(skeleton == 1, structure=s1)
+    skel_label, skel_number = ndimage.measurements.label(skeleton == 1, structure=structuring_element_block)
     for i in range(1, skel_number + 1):
         m = skel_label == i
         number_pixels = np.sum(m)
@@ -116,7 +125,7 @@ def detect_structures(denoised, pixel_sizes):
     # dilation and skeletonize von Linien und dann nochmal klassifizieren, um nicht vollständig geschlossene Ringe zu schließen
     # lines = ndimage.gaussian_filter(lines, sigma=5)
     for i in range(10):
-        lines = morphology.binary_dilation(lines, s2)
+        lines = morphology.binary_dilation(lines, structuring_element_cross)
     lines = morphology.skeletonize(lines)
     # TODO falls es wesentlich weniger Pixel werden bei manchen Linien, dann hat der Skeletonalgorithmus sie zusammengezogen, das wollen wir eher nicht und sollten diese vielleicht wiederherstellen
 
@@ -168,6 +177,11 @@ def detect_bax_structures(root_path, filename, bax_path):
     image, pixel_sizes = extract_image_from_imspector_stack(stack)  # in den utils zu finden
     denoised = denoise_image(image)
 
+    # save structures type (1,2,3) (classified_skeletons)
+    output_path = os.path.join(bax_path, filename[:-4] + '.denoised.tiff')
+    img = Image.fromarray(denoised)
+    img.save(output_path, format='tiff')
+
     # cluster detektieren
     cluster_mask = detect_cluster(denoised, pixel_sizes)
     display_image(cluster_mask, 'cluster')
@@ -207,10 +221,12 @@ if __name__ == '__main__':
     if not os.path.isdir(bax_path):
         os.makedirs(bax_path)
 
-    for filename in os.listdir(root_path):  # ich erstelle eine Liste mit den Filenames in dem Ordner
+    filenames = list(os.listdir(root_path))
+    filenames.reverse()
+    for filename in filenames:  # ich erstelle eine Liste mit den Filenames in dem Ordner
         if filename.endswith(".msr"):  # wenn die Endung .msr ist, dann mach was damit, nämlich:
             print(filename)
 
             detect_bax_structures(root_path, filename, bax_path)
 
-            break  # for testing purposes only the first measurement
+            # break  # for testing purposes only the first measurement

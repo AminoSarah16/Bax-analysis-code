@@ -36,7 +36,7 @@ def compute_smallest_distance(x, y, mito_mask):
     return Dmin
 
 
-def compute_things(mito_mask, bax_clusters, bax_structures, bax_statistics):
+def Bax_to_mito_relation(mito_mask, bax_clusters, bax_structures, bax_statistics):
     """
     Berechnet den Überlapp zwischen Mitos und Bax Clustern bzw. Bax Strukturen
 
@@ -83,6 +83,9 @@ def compute_things(mito_mask, bax_clusters, bax_structures, bax_statistics):
     for i in range(Ns):
         # get x and y positions of a structure
         m = bax_structures == i + 1 # weil im Bild die erste Structure den Wert 1 hat
+
+        # dilate structure before overlap calculation
+        m = morphology.binary_dilation(m, structuring_element_cross)
         xj = xi[m]
         yj = yi[m]
 
@@ -142,4 +145,4 @@ if __name__ == '__main__':
             bax_statistics = np.loadtxt(path, delimiter=',')
 
             # compute overlap
-            compute_things(mito_mask, bax_clusters, bax_structures, bax_statistics)
+            Bax_to_mito_relation(mito_mask, bax_clusters, bax_structures, bax_statistics)

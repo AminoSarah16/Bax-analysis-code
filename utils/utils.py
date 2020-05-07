@@ -8,6 +8,10 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import scipy.ndimage as ndimage
 import configparser
+import skimage.morphology as morphology
+
+structuring_element_block = ndimage.morphology.generate_binary_structure(2, 2)  # 3x3 block
+structuring_element_cross = ndimage.morphology.generate_binary_structure(2, 1)  # 3x3 cross
 
 
 def get_root_path():
