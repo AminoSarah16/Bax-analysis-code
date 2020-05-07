@@ -7,6 +7,7 @@ import os
 import numpy as np
 from utils.utils import *
 
+
 def compute_smallest_distance(x, y, mito_mask):
     """
     Berechnet des kleinsten Abstand von der Position (x,y) zu irgendereiner Position in mito_mask, bei der mito_mask gesetzt ist
@@ -35,14 +36,20 @@ def compute_smallest_distance(x, y, mito_mask):
     return Dmin
 
 
-
-
 def compute_things(mito_mask, bax_clusters, bax_structures, bax_statistics):
+    """
+    Berechnet den Überlapp zwischen Mitos und Bax Clustern bzw. Bax Strukturen
+
+    mito_maske: binäre Maske aus der Mito Erkennung
+    bax_clusters: labelled clusters aus der Bax Cluster Erkennung
+    bax_structures: labelled structures aus der Bax Struktur Erkennung
+    bax_statistics: was wir schon über die Strukturen wissen (Typ, ...)
+    """
 
     # anzeige
     # display_image((mito_mask, bax_clusters, bax_structures), ('Mito Maske', 'Bax Cluster', 'Bax Structures'))
 
-    # x, y positions
+    # x, y position grid
     size = mito_mask.shape
     xi, yi = np.meshgrid(np.arange(size[0]), np.arange(size[1]), indexing='ij')
 
@@ -71,6 +78,30 @@ def compute_things(mito_mask, bax_clusters, bax_structures, bax_statistics):
 
         print((i, mito_overlap, mito_distance))
 
+    # iteriere über strukturen und berechne überlapp
+    Ns = np.amax(bax_structures)
+    for i in range(Ns):
+        # get x and y positions of a structure
+        m = bax_structures == i + 1 # weil im Bild die erste Structure den Wert 1 hat
+        xj = xi[m]
+        yj = yi[m]
+
+        # überlapp berechnen
+        N1 = xj.size
+        N2 = 0
+        for j in range(N1):
+            if mito_mask[xj[j], yj[j]] > 0:
+                N2 += 1
+        mito_overlap = N2 / N1
+
+        # schwerpunkt berechnen
+        xm = np.mean(xj)
+        ym = np.mean(yj)
+
+        # distanz schwerpunkt - mito berechnen
+        mito_distance = compute_smallest_distance(xm, ym, mito_mask)
+
+        print((i, mito_overlap, mito_distance))
 
 if __name__ == '__main__':
 

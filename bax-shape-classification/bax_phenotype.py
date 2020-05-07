@@ -16,6 +16,7 @@ from utils.utils import *
 s1 = ndimage.morphology.generate_binary_structure(2, 2)  # 3x3 block
 s2 = ndimage.morphology.generate_binary_structure(2, 1)  # 3x3 cross
 
+
 def detect_cluster(denoised, pixel_sizes):
     '''
     Detektiert einzelne Cluster
@@ -39,6 +40,7 @@ def detect_cluster(denoised, pixel_sizes):
     # display_image(maske, 'bax cluster')
 
     return labeled_mask
+
 
 def skeletonize_and_detect_holes(mask):
     # skeleton berechnen
@@ -116,11 +118,9 @@ def detect_structures(denoised, pixel_sizes):
     for i in range(10):
         lines = morphology.binary_dilation(lines, s2)
     lines = morphology.skeletonize(lines)
-    # TODO falls es wesentlich weniger Pixel werden bei manchen Linien, dann hat der Skeletonalgorithmus sie zusammengezogen, das wollen wir eher nicht und
-    # sollten diese vielleicht wiederherstellen
+    # TODO falls es wesentlich weniger Pixel werden bei manchen Linien, dann hat der Skeletonalgorithmus sie zusammengezogen, das wollen wir eher nicht und sollten diese vielleicht wiederherstellen
 
     lines_skel_label, _, _ = skeletonize_and_detect_holes(lines)
-
 
     skel_label, skel_number, holes_statistics = skeletonize_and_detect_holes((skel_label > 0) | (lines_skel_label > 0))
 
@@ -150,6 +150,9 @@ def detect_structures(denoised, pixel_sizes):
 
 
 def detect_bax_structures(root_path, filename, bax_path):
+    """
+    Detect Bax Strukturen in einer Messung (Cluster und andere)
+    """
 
     file_path = os.path.join(root_path, filename)
 
@@ -199,7 +202,7 @@ def detect_bax_structures(root_path, filename, bax_path):
 
 if __name__ == '__main__':
 
-    root_path = r'C:\Users\Sarah\Documents\Python\Bax-analysis\IF36_selected-for-analysis-with-Jan'
+    root_path = get_root_path()
     bax_path = os.path.join(root_path, 'results', 'bax-structures')
     if not os.path.isdir(bax_path):
         os.makedirs(bax_path)

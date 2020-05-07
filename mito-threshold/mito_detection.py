@@ -12,6 +12,7 @@ import skimage.filters as filters
 import cv2
 from utils.utils import *
 
+
 def create_mito_mask_from_measurement(root_path, filename):
     """
     Liest Imspector file und erstellt Maske
@@ -45,6 +46,7 @@ def create_mito_mask_from_measurement(root_path, filename):
     # TODO Zelle erkennen auf konfokalen MitoBild
 
     return denoised_data, maske
+
 
 if __name__ == '__main__':
     # haupt code untendrunter

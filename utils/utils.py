@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import scipy.ndimage as ndimage
 import configparser
 
+
 def get_root_path():
     """
     Retrieves the root path
