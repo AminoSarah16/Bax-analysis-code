@@ -5,6 +5,7 @@ Warum ist es so langsam und kann man es schneller machen? FIJI plugin kann Hdf5 
 """
 
 import os
+import matplotlib as mpl
 from PIL import Image  # https://pillow.readthedocs.io/en/stable/handbook/index.html
 from utils.utils import *
 
@@ -30,7 +31,7 @@ if __name__ == '__main__':
 
             # binarize according to separation color
             # maske = img[:, :, 0] == 255 & img[:, :, 1] == 255 & img[:, :, 2] == 0
-            maske = np.logical_not(np.logical_and.reduce((img[:, :, 0] == 255, img[:, :, 1] == 255, img[:, :, 2] == 0)))
+            maske = np.logical_not(np.logical_and.reduce((img[:, :, 0] == separation_color[0], img[:, :, 1] == separation_color[1], img[:, :, 2] == separation_color[2])))
 
             # check: display mask
             fig, ax = plt.subplots()
@@ -40,8 +41,15 @@ if __name__ == '__main__':
             # label (https://docs.scipy.org/doc/scipy-0.16.0/reference/generated/scipy.ndimage.measurements.label.html)
             labelled_maske, number_cells = ndimage.measurements.label(maske)
 
+            # TODO: wieso gehen die neuen colormaps nur mit dieser labeled mask und nicht im Bax code? Jaaaaaaaaan, Hilfe!
+            vals = np.linspace(0,1,256)
+            np.random.shuffle(vals)
+            cmap = plt.cm.colors.ListedColormap(plt.cm.rainbow(vals))
+
+            Glasbey = mpl.colors.ListedColormap(np.random.rand(256, 3))
+
             # check: display labelled mask
-            im = ax.imshow(labelled_maske, cmap='inferno')
+            im = ax.imshow(labelled_maske, cmap=Glasbey)
             plt.show()
 
             # save as tif (and save as hdf5)

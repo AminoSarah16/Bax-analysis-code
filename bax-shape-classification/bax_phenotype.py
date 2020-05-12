@@ -24,8 +24,8 @@ def detect_cluster(denoised, pixel_sizes):
     '''
 
     # maske erstellen
-    maske = denoised > 15  # TODO anpassen auf die anderen Bilder
-    minimal_area = 3.14 * (0.1)**2 # cluster müssen mindestens eine fläche von 100nm2PI haben
+    maske = denoised > 15  # TODO anpassen auf die anderen Bilder  # TODO: in die GUI
+    minimal_area = 3.14 * (0.1)**2 # cluster müssen mindestens eine fläche von 100nm2PI haben  # TODO: in die GUI?
 
     # labeln der cluster-segment und größe pro segment
     labeled_mask, number_clusters = ndimage.measurements.label(maske)
@@ -94,8 +94,8 @@ def skeletonize_and_detect_holes(mask):
 
 def detect_structures(denoised, pixel_sizes):
 
-    # segmentieren mit kleineren threshold
-    maske = denoised > 1.5
+    # segmentieren mit kleineren intensity threshold
+    maske = denoised > 1.5  # TODO: in die GUI
 
     #display_image(cmaske, 'kleine segment weg')
 
@@ -107,7 +107,7 @@ def detect_structures(denoised, pixel_sizes):
     for i in range(1, skel_number + 1):
         m = skel_label == i
         number_pixels = np.sum(m)
-        if number_pixels < 20:  # skeleton must have at least 20 pixel
+        if number_pixels < 20:  # skeleton must have at least 20 pixel  # TODO: in die GUI
             skel_label[m] = 0
     # skel_label enthält alle Skeletons ab einer gewissen Größe und durchnummeriert
 
@@ -124,7 +124,7 @@ def detect_structures(denoised, pixel_sizes):
 
     # dilation and skeletonize von Linien und dann nochmal klassifizieren, um nicht vollständig geschlossene Ringe zu schließen
     # lines = ndimage.gaussian_filter(lines, sigma=5)
-    for i in range(10):
+    for i in range(10):  # TODO: in die GUI
         lines = morphology.binary_dilation(lines, structuring_element_cross)
     lines = morphology.skeletonize(lines)
     # TODO falls es wesentlich weniger Pixel werden bei manchen Linien, dann hat der Skeletonalgorithmus sie zusammengezogen, das wollen wir eher nicht und sollten diese vielleicht wiederherstellen
@@ -140,7 +140,7 @@ def detect_structures(denoised, pixel_sizes):
         m = skel_label == i
         if holes_statistics[i, 0] == 0:  # kein Loch -> Linie
             typ = 1 # Linie
-        elif holes_statistics[i, 0] == 1 and holes_statistics[i, 1] > 0.5: # ein Loch und nicht zuviel drum herum = Ring
+        elif holes_statistics[i, 0] == 1 and holes_statistics[i, 1] > 0.5: # ein Loch und nicht zuviel (50%) drum herum = Ring  # TODO: in die GUI
             typ = 2 # Ring
         else:  # komnplexe Struktur ist der gesamte rest
             typ = 3 # Komnplex
@@ -151,7 +151,7 @@ def detect_structures(denoised, pixel_sizes):
 
     display_image((classified_skeletons, skel_label), ('type of skeletons', 'labelled skeletons'))
 
-    np.set_printoptions(precision=3, suppress=True)
+    np.set_printoptions(precision=3, suppress=True)  # das ist für die Darstellung von Kommazahlen
     for i in range(1, holes_statistics.shape[0]):
         print('id {}: {}'.format(i, holes_statistics[i, :]))
 

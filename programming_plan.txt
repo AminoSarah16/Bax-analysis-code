@@ -52,3 +52,5 @@
 
 Generelle Probleme:
  - Anzeige (Skalierung der Colortabl)
+
+

@@ -32,12 +32,12 @@ def create_mito_mask_from_measurement(root_path, filename):
     data, pixel_sizes = extract_image_from_imspector_stack(mito_stack)
 
     # Rauschen reduzieren
-    denoised_data = ndimage.gaussian_filter(data, sigma=2)
+    denoised_data = ndimage.gaussian_filter(data, sigma=2)  # TODO: in die GUI
 
     # super threshold
     denoised_data = denoised_data.astype(np.uint8)  # ich wandle mein denoised data mit astype in 8bit image um
 
-    maske = cv2.adaptiveThreshold(denoised_data, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 401, -2)
+    maske = cv2.adaptiveThreshold(denoised_data, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 401, -2) # TODO: in die GUI
     # So funktioniert der opencv adaptive threshold: neuesBild = cv.adaptiveThreshold(source, maxValue, adaptiv
 
     # display

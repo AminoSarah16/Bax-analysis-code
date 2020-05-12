@@ -8,6 +8,8 @@ import time
 from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
 import cv2
+from matplotlib import cm
+import matplotlib as mpl
 from utils.utils import *
 
 
@@ -240,18 +242,33 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         layout.addWidget(groupbox_detection, stretch=1)
 
         # initialization
+        self.cluster_mask = None
+        self.denoised_data = None
 
     def button_cluster_toggled(self, checked):
         if checked:
             self.button_cluster_toggle.setText('Show data')
         else:
             self.button_cluster_toggle.setText('Show cluster')
-        self.update_image
+        self.update_image()
         
     def update_image(self):
         if self.button_cluster_toggle.isChecked():
             if self.cluster_mask is not None:
                 self.img.setImage(self.cluster_mask)
+                # Get the colormap
+                colormap = cm.get_cmap("rainbow")  # cm.get_cmap("CMRmap")
+                colormap._init()
+                lut = (colormap._lut * 255).view(np.ndarray)  # Convert matplotlib colormap from 0-1 to 0 -255 for Qt
+                bg = lut[0,:]
+                bg = bg.reshape(1, -1)
+                colors = lut[1:,:]
+                np.random.shuffle(colors)
+                lut = np.vstack((bg, colors))
+
+                # Glasbey = mpl.colors.ListedColormap(np.random.rand(256, 3))
+                # Apply the colormap
+                self.img.getImageItem().setLookupTable(lut)
         else:
             if self.denoised_data is not None:
                 self.img.setImage(self.denoised_data)

@@ -13,7 +13,7 @@ def compute_smallest_distance(x, y, mito_mask):
     Berechnet des kleinsten Abstand von der Position (x,y) zu irgendereiner Position in mito_mask, bei der mito_mask gesetzt ist
     """
 
-    Dmax = 100  # 100 pixel is maximaler abstand
+    Dmax = 100  # 100 pixel is maximaler abstand  #TODO: in die GUI
 
     x1 = int(max(0, np.floor(x)-Dmax))
     x2 = int(min(mito_mask.shape[0], np.ceil(x)+Dmax))
