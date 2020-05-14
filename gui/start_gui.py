@@ -284,26 +284,26 @@ def detect_bax_structures(denoised, pixel_sizes, segment_threshold, minimal_skel
     # skeleton der maske
     skeleton = morphology.skeletonize(maske)
 
-    progress.emit(10)
-    print('10 =  {}s'.format(time.time() - start))
-
     # labeln des skeletons und bereinigen um kleine skeletons
     skel_label, skel_number = ndimage.measurements.label(skeleton == 1, structure=structuring_element_block)
-    for i in range(1, skel_number + 1):
-        m = skel_label == i
-        number_pixels = np.sum(m)
-        if number_pixels < minimal_skeleton_size:  # skeleton must have at least a certain number of pixels
-            skel_label[m] = 0
+    objects = ndimage.measurements.find_objects(skel_label)
+    for i in range(skel_number):
+        obj = objects[i]
+        m = skel_label[obj[0], obj[1]]
+        number_pixels = np.sum(m == i + 1)
+        if number_pixels < minimal_skeleton_size: # skeleton must have at least a certain number of pixels
+            m[m == i + 1] = 0
+            skel_label[obj[0], obj[1]] = m
     # skel_label enthält alle Skeletons ab einer gewissen Größe und durchnummeriert
 
-    progress.emit(20)
-    print('20 =  {}s'.format(time.time() - start))
+    progress.emit(3)
+    # print('20 =  {}s'.format(time.time() - start))
 
     # Löcher detektieren und klassifizieren
     skel_label, skel_number, holes_statistics = skeletonize_and_detect_holes(skel_label != 0)
 
-    progress.emit(30)
-    print('30 =  {}s'.format(time.time() - start))
+    progress.emit(35)
+    # print('30 =  {}s'.format(time.time() - start))
 
     # copy lines to another array, um sie nochmal testen zu können
     lines = np.zeros(skel_label.shape)
@@ -313,8 +313,8 @@ def detect_bax_structures(denoised, pixel_sizes, segment_threshold, minimal_skel
             skel_label[m] = 0
             lines[m] = 1  # copy to lines mask
 
-    progress.emit(60)
-    print('60 =  {}s'.format(time.time() - start))
+    progress.emit(41)
+    # print('60 =  {}s'.format(time.time() - start))
 
     # dilation and skeletonize von Linien und dann nochmal klassifizieren, um nicht vollständig geschlossene Ringe zu schließen
     # lines = ndimage.gaussian_filter(lines, sigma=5)
@@ -323,18 +323,18 @@ def detect_bax_structures(denoised, pixel_sizes, segment_threshold, minimal_skel
     lines = morphology.skeletonize(lines)
     # TODO falls es wesentlich weniger Pixel werden bei manchen Linien, dann hat der Skeletonalgorithmus sie zusammengezogen, das wollen wir eher nicht und sollten diese vielleicht wiederherstellen
 
-    progress.emit(70)
-    print('70 =  {}s'.format(time.time() - start))
+    progress.emit(50)
+    # print('70 =  {}s'.format(time.time() - start))
 
     lines_skel_label, _, _ = skeletonize_and_detect_holes(lines)
 
-    progress.emit(80)
-    print('80 =  {}s'.format(time.time() - start))
+    progress.emit(66)
+    # print('80 =  {}s'.format(time.time() - start))
 
     skel_label, skel_number, holes_statistics = skeletonize_and_detect_holes((skel_label > 0) | (lines_skel_label > 0))
 
-    progress.emit(90)
-    print('90 =  {}s'.format(time.time() - start))
+    progress.emit(95)
+    #print('90 =  {}s'.format(time.time() - start))
 
     # add one column in holes_statistics
     holes_statistics = np.append(holes_statistics, np.zeros((holes_statistics.shape[0], 1)), axis=1)
@@ -351,7 +351,7 @@ def detect_bax_structures(denoised, pixel_sizes, segment_threshold, minimal_skel
         holes_statistics[i, 4] = typ
 
     progress.emit(100)
-    print('100 =  {}s'.format(time.time() - start))
+    #print('100 =  {}s'.format(time.time() - start))
 
     return classified_skeletons, skel_label, holes_statistics
 
@@ -386,6 +386,7 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         self.glasbey = pg.ColorMap(pos=np.linspace(0.0, 1.0, 20), color=lut.astype(np.uint8))
 
         self.colormap_grey = pg.ColorMap(pos = [0, 1], color = [(0, 0, 0, 255), (255, 255, 255, 255)])
+        self.colormap_tricolor = pg.ColorMap(pos=[0, 0.33, 0.66, 1], color=[(0, 0, 0, 255), (255, 255, 0, 255), (255, 0, 255, 255), (0, 255, 255, 255)])
 
         # file group box
         groupbox_file = FileSelectionGroupBox()
@@ -419,7 +420,7 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         ll.addWidget(self.slider_structures_threshold)
 
         self.combobox_show = QtWidgets.QComboBox(self)
-        self.combobox_show.addItems(['Data', 'Cluster', 'Structures'])
+        self.combobox_show.addItems(['Data', 'Cluster', 'Structures', 'Structure types'])
         self.combobox_show.setCurrentIndex(0)
         self.combobox_show.currentIndexChanged.connect(self.show)
         ll.addWidget(self.combobox_show)
@@ -495,6 +496,9 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         elif idx == 2: # skel labels
             self.img.getImageItem().setImage(self.skel_label)
             self.img.setColorMap(self.glasbey)
+        elif idx == 3: # skel type
+            self.img.getImageItem().setImage(self.classified_skeletons)
+            self.img.setColorMap(self.colormap_tricolor)
 
     def load_file(self, file):
         """
