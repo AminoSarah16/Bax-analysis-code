@@ -13,6 +13,20 @@ from PIL import Image  # https://pillow.readthedocs.io/en/stable/handbook/index.
 from utils.utils import *
 
 
+def saveColorMapState(histogramLUTItem):
+    return {
+        'gradient': histogramLUTItem.gradient.saveState(),
+        'levels': histogramLUTItem.getLevels()
+        #'mode': histogramLUTItem.levelMode,
+    }
+
+
+def restoreColorMapState(histogramLUTItem, state):
+    #histogramLUTItem.setLevelMode(state['mode'])
+    histogramLUTItem.gradient.restoreState(state['gradient'])
+    histogramLUTItem.setLevels(*state['levels'])
+
+
 def create_action(text, parent, destination):
     """
 
@@ -224,13 +238,14 @@ def detect_bax_cluster(denoised, pixel_sizes, cluster_threshold):
             m[m == i + 1] = 0  # alle Pixel, in dem Recheck, die den Wert i+1 haben, löschen
             labeled_mask[obj[0], obj[1]] = m  # das Rechteck in das gelabelten Bild wieder einsetzen
         # print('cluster {} contains {} pixels, area = {} µm²'.format(i, cluster_pixelsum, cluster_area))
-    print('das dauerte jetzt {}s'.format(time.time() - start))
+    # print('das dauerte jetzt {}s'.format(time.time() - start))
 
     labeled_mask, number_clusters = ndimage.measurements.label(labeled_mask > 0)
 
     # display_image((maske, labeled_mask), ('bax cluster', 'area filtered'))
 
     return labeled_mask
+
 
 def skeletonize_and_detect_holes(mask):
     # skeleton berechnen
@@ -379,13 +394,15 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         colormap = cm.get_cmap("hsv")  # cm.get_cmap("CMRmap")
         colormap._init()
         lut = (colormap._lut * 255).view(np.ndarray)  # Convert matplotlib colormap from 0-1 to 0 -255 for Qt
-        np.random.shuffle(lut)
-        lut = np.vstack(([0, 0, 0, 0], lut))
+        # np.random.shuffle(lut)
+        lut = np.vstack(([0, 0, 0, 0], lut[0::10,:]))
         # Apply the colormap
         # self.img.getImageItem().setLookupTable(lut)
-        self.glasbey = pg.ColorMap(pos=np.linspace(0.0, 1.0, 20), color=lut.astype(np.uint8))
+        self.colormap_glasbey = pg.ColorMap(pos=np.linspace(0.0, 1.0, 27), color=lut.astype(np.uint8))
 
         self.colormap_grey = pg.ColorMap(pos = [0, 1], color = [(0, 0, 0, 255), (255, 255, 255, 255)])
+        # self.colormap_flame = pg.ColorMap(pos = [0.0, 0.2, 0.5, 0.8, 1.0], color = [(0, 0, 0, 255), (7, 0, 220, 255), (236, 0, 134, 255), (246, 246, 0, 255), (255, 255, 255, 255)])
+        self.colormap_hot = pg.ColorMap(pos = np.linspace(0.0, 1.0, 4), color=[(0, 0, 0, 255), (185, 0, 0, 255), (255, 220, 0, 255), (255, 255, 255, 255)])
         self.colormap_tricolor = pg.ColorMap(pos=[0, 0.33, 0.66, 1], color=[(0, 0, 0, 255), (255, 255, 0, 255), (255, 0, 255, 255), (0, 255, 255, 255)])
 
         # file group box
@@ -414,14 +431,13 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         self.slider_structures_threshold = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.slider_structures_threshold.setTickInterval(1)
         self.slider_structures_threshold.setTickPosition(QtWidgets.QSlider.TicksAbove)
-        self.slider_structures_threshold.setSingleStep(0.5)
+        self.slider_structures_threshold.setSingleStep(1)
         self.slider_structures_threshold.setRange(0, 10)
         self.slider_structures_threshold.valueChanged.connect(self.structures_threshold_changed)
         ll.addWidget(self.slider_structures_threshold)
 
         self.combobox_show = QtWidgets.QComboBox(self)
         self.combobox_show.addItems(['Data', 'Cluster', 'Structures', 'Structure types'])
-        self.combobox_show.setCurrentIndex(0)
         self.combobox_show.currentIndexChanged.connect(self.show)
         ll.addWidget(self.combobox_show)
 
@@ -440,7 +456,10 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         self.cluster_mask = None
         self.denoised_data = None
         self.slider_threshold.setValue(15)
-        self.slider_structures_threshold.setValue(1.5)
+        self.slider_structures_threshold.setValue(3)
+        self.current_index = None
+        self.colorhistogram_item_states = [None, None, None, None]
+        self.combobox_show.setCurrentIndex(0)
 
     def threshold_changed(self, value):
         self.label_threshold.setText('Cluster threshold ({})'.format(value))
@@ -459,7 +478,7 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
     def update_structures(self):
         if self.denoised_data is not None:
             # strukturen detektieren
-            self.classified_skeletons, self.skel_label, self.holes_statistics = detect_bax_structures(self.denoised_data, self.pixel_sizes, self.slider_structures_threshold.value(), 20, 10, self.progress)
+            self.classified_skeletons, self.skel_label, self.holes_statistics = detect_bax_structures(self.denoised_data, self.pixel_sizes, self.slider_structures_threshold.value()/2, 20, 10, self.progress)
 
     def save(self):
         """
@@ -478,27 +497,44 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         self.status.emit('Everything is saved')
 
     def show(self, index):
-        print(index)
+        #print(index)
         self.update_image()
         
     def update_image(self):
         if self.denoised_data is None:
             return
         idx = self.combobox_show.currentIndex()
+        # store state
+        if self.current_index is not None:
+            self.colorhistogram_item_states[self.current_index] = saveColorMapState(self.img.getHistogramWidget().item)
         if idx == 0: # data
             self.img.getImageItem().setImage(self.denoised_data)
             # self.img.setImage(self.denoised_data)
-            self.img.setColorMap(self.colormap_grey)
+            if self.colorhistogram_item_states[idx] is not None:
+                restoreColorMapState(self.img.getHistogramWidget().item, self.colorhistogram_item_states[idx])
+            else:
+                #self.img.setColorMap(self.colormap_grey)
+                self.img.setColorMap(self.colormap_hot)
         elif idx == 1: # cluster
             self.img.getImageItem().setImage(self.cluster_mask)
             # self.img.setImage(self.cluster_mask)
-            self.img.setColorMap(self.glasbey)
+            if self.colorhistogram_item_states[idx] is not None:
+                restoreColorMapState(self.img.getHistogramWidget().item, self.colorhistogram_item_states[idx])
+            else:
+                self.img.setColorMap(self.colormap_glasbey)
         elif idx == 2: # skel labels
             self.img.getImageItem().setImage(self.skel_label)
-            self.img.setColorMap(self.glasbey)
+            if self.colorhistogram_item_states[idx] is not None:
+                restoreColorMapState(self.img.getHistogramWidget().item, self.colorhistogram_item_states[idx])
+            else:
+                self.img.setColorMap(self.colormap_glasbey)
         elif idx == 3: # skel type
             self.img.getImageItem().setImage(self.classified_skeletons)
-            self.img.setColorMap(self.colormap_tricolor)
+            if self.colorhistogram_item_states[idx] is not None:
+                restoreColorMapState(self.img.getHistogramWidget().item, self.colorhistogram_item_states[idx])
+            else:
+                self.img.setColorMap(self.colormap_tricolor)
+        self.current_index = idx
 
     def load_file(self, file):
         """
