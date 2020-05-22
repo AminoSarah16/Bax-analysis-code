@@ -175,7 +175,7 @@ def detect_bax_structures(root_path, filename, bax_path):
 
     # Daten des bax stacks und Rauschen entfernen
     image, pixel_sizes = extract_image_from_imspector_stack(stack)  # in den utils zu finden
-    denoised = denoise_image(image)
+    denoised = clean_image(image)
 
     # save structures type (1,2,3) (classified_skeletons)
     output_path = os.path.join(bax_path, filename[:-4] + '.denoised.tiff')

@@ -64,6 +64,10 @@ def extract_image_from_imspector_stack(stack):
     # transponieren [Nx, Ny]
     data = np.transpose(data)
 
+    # data as float32
+    data = data.astype(np.float32)
+
+    # compute pixel sizes
     lengths = stack.lengths()
     pixel_sizes = (lengths[0] / data.shape[0] / 1e-6, lengths[1] / data.shape[1] / 1e-6)  # conversion m to µm
 
@@ -104,9 +108,23 @@ def scale_to_255(image):
     return image / np.amax(image) * 2550
 
 
-def denoise_image(image, sigma=2):
+def clean_image(image, noise_sigma=2, background_sigma=20, subtraction_fraction=0.8):
+    """
+    Smooths with a small Gaussian to reduce noise and with a large Gaussian to remove background, then subtracts part
+    of the background.
+    """
+
+    if image.dtype != np.float32:
+        raise RuntimeError('Need floating point precision for input.')
 
     # Rauschen reduzieren
-    denoised = ndimage.gaussian_filter(image, sigma=2)
+    denoised_image = ndimage.gaussian_filter(image, sigma=noise_sigma)
 
-    return denoised
+    # Und Hintergrund abziehen
+    background_image = ndimage.gaussian_filter(image, sigma=background_sigma)
+
+    clean_image = np.maximum(0, denoised_image - subtraction_fraction * background_image)
+
+    # print('{}, {}, {}, {}'.format(np.sum(image), np.sum(denoised), np.sum(background), np.sum(filtered)))
+
+    return clean_image, denoised_image, background_image

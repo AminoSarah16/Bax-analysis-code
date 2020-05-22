@@ -72,6 +72,16 @@ class FileSelectionGroupBox(QtWidgets.QGroupBox):
             self.label.setText(tail)
             self.selected.emit(file)
 
+def create_spinbox(minimum, maximum, step, value_changed_slot):
+    """
+
+    """
+    spinbox = QtWidgets.QSpinBox()
+    spinbox.setRange(minimum, maximum)
+    spinbox.setSingleStep(step)
+    spinbox.valueChanged.connect(value_changed_slot)
+    return spinbox
+
 
 class MitoDetectionWindow(QtWidgets.QWidget):
     """
@@ -97,30 +107,34 @@ class MitoDetectionWindow(QtWidgets.QWidget):
         self.img = pg.ImageView()
         l.addWidget(self.img, stretch=1)
         ll = QtWidgets.QVBoxLayout()
-        self.slider_rel_threshold = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.slider_rel_threshold.setTickInterval(5)
-        self.slider_rel_threshold.setTickPosition(QtWidgets.QSlider.TicksAbove)
-        self.slider_rel_threshold.setSingleStep(1)
-        self.slider_rel_threshold.setRange(-10, 10)
-        self.slider_rel_threshold.valueChanged.connect(self.rel_threshold_changed)
-        self.label_rel_threshold = QtWidgets.QLabel()
-        ll.addWidget(self.label_rel_threshold)
-        ll.addWidget(self.slider_rel_threshold)
 
-        self.slider_blocksize = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.slider_blocksize.setTickInterval(50)
-        self.slider_blocksize.setTickPosition(QtWidgets.QSlider.TicksAbove)
-        self.slider_blocksize.setSingleStep(10)
-        self.slider_blocksize.setRange(100, 400)
-        self.slider_blocksize.valueChanged.connect(self.blocksize_changed)
-        self.label_blocksize = QtWidgets.QLabel()
-        ll.addWidget(self.label_blocksize)
-        ll.addWidget(self.slider_blocksize)
+        # signal fwhm
+        ll.addWidget(QtWidgets.QLabel('Signal FWHM (nm)'))
+        self.spinbox_signal_fwhm = create_spinbox(40, 200, 20, self.schedule_update)
+        ll.addWidget(self.spinbox_signal_fwhm)
 
-        self.button_toggle = QtWidgets.QPushButton('Show mask')
-        self.button_toggle.setCheckable(True)
-        self.button_toggle.toggled.connect(self.button_toggled)
-        ll.addWidget(self.button_toggle)
+        # background fwhm
+        ll.addWidget(QtWidgets.QLabel('Background FWHM (nm)'))
+        self.spinbox_background_fwhm = create_spinbox(500, 1000, 100, self.schedule_update)
+        ll.addWidget(self.spinbox_background_fwhm)
+
+        # subtraction factor
+        ll.addWidget(QtWidgets.QLabel('Background subtraction (%)'))
+        self.spinbox_bg_subtraction_factor = create_spinbox(0, 100, 5, self.schedule_update)
+        ll.addWidget(self.spinbox_bg_subtraction_factor)
+
+        ## threshold factor
+        ll.addWidget(QtWidgets.QLabel('Rel. threshold (%)'))
+        self.spinbox_rel_threshold = create_spinbox(0, 100, 1, self.schedule_update)
+        ll.addWidget(self.spinbox_rel_threshold)
+
+        # selection of image to show
+        self.combobox_show = QtWidgets.QComboBox(self)
+        self.combobox_show.addItems(['Raw Data', 'Processed data', 'Mito mask'])
+        self.combobox_show.currentIndexChanged.connect(self.update_image)
+        ll.addWidget(self.combobox_show)
+
+        # save button
         button_save = QtWidgets.QPushButton('Save')
         button_save.clicked.connect(self.save_mito_mask)
         ll.addWidget(button_save)
@@ -132,41 +146,77 @@ class MitoDetectionWindow(QtWidgets.QWidget):
         layout.addWidget(groupbox_file)
         layout.addWidget(groupbox_detection, stretch=1)
 
+        # timer
+        self.timer_update = QtCore.QTimer()
+        self.timer_update.setSingleShot(True)
+        self.timer_update.setInterval(500)
+        self.timer_update.timeout.connect(self.update)
+
         # initialization
-        self.denoised_data = None
+        self.raw_data = None
+        self.clean_data = None
         self.mito_mask = None
-        self.slider_rel_threshold.setValue(-2)
-        self.slider_blocksize.setValue(200)
+        self.current_index = None
+        self.spinbox_signal_fwhm.setValue(100)
+        self.spinbox_background_fwhm.setValue(600)
+        self.spinbox_bg_subtraction_factor.setValue(80)
+        self.spinbox_rel_threshold.setValue(10)
+        self.colorhistogram_item_states = [None, None, None, None]
+        self.combobox_show.setCurrentIndex(0)
 
-    def rel_threshold_changed(self, value):
-        self.label_rel_threshold.setText('Threshold ({})'.format(value))
-        self.update_mask()
-        self.update_image()
+    def schedule_update(self):
+        self.timer_update.start()
 
-    def blocksize_changed(self, value):
-        self.label_blocksize.setText('Blocksize ({})'.format(value))
+    def update(self):
+        """
+        Compute everything new and update the display
+        """
+        if self.raw_data is None:
+            return
+
+        # status
+        self.status.emit('Updating')
+        print('updating')
+
+        # denoise image
+        px = self.pixel_sizes[0] * 1000 # convert to nm
+        noise_sigma = self.spinbox_signal_fwhm.value() / px / 2.35  # conversion FWHM to sigma = 2.35
+        background_sigma = self.spinbox_background_fwhm.value() / px / 2.35
+        subtraction_fraction = self.spinbox_bg_subtraction_factor.value() / 100
+        self.clean_data, self.denoised_data, self.background_data = clean_image(self.raw_data, noise_sigma, background_sigma, subtraction_fraction)
+        # self.denoised_data = self.denoised_data.astype(np.uint8)  # ich wandle mein denoised data mit astype in 8bit image um
+
+        # create mask
         self.update_mask()
+
+        # update image
         self.update_image()
 
     def update_mask(self):
-        if self.denoised_data is None:
+        rel_threshold = self.spinbox_rel_threshold.value() / 100
+        self.mito_mask = self.clean_data > np.max(self.clean_data) * rel_threshold
+        self.mito_mask = self.mito_mask.astype(np.uint8)
+        # self.mito_mask = cv2.adaptiveThreshold(self.denoised_data, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, self.slider_blocksize.value()*2+1, self.slider_rel_threshold.value())
+
+    def update_image(self, _=None):
+        if self.raw_data is None:
             return
-        self.mito_mask = cv2.adaptiveThreshold(self.denoised_data, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, self.slider_blocksize.value()*2+1, self.slider_rel_threshold.value())
-
-    def update_image(self):
-        if self.button_toggle.isChecked():
-            if self.mito_mask is not None:
-                self.img.getImageItem().setImage(self.mito_mask)
-        else:
-            if self.denoised_data is not None:
-                self.img.getImageItem().setImage(self.denoised_data)
-
-    def button_toggled(self, checked):
-        if checked:
-            self.button_toggle.setText('Show data')
-        else:
-            self.button_toggle.setText('Show mask')
-        self.update_image()
+        index = self.combobox_show.currentIndex()
+        # store state
+        if self.current_index is not None:
+            self.colorhistogram_item_states[self.current_index] = saveColorMapState(self.img.getHistogramWidget().item)
+        if index == 0: # raw data
+            self.img.getImageItem().setImage(self.raw_data)
+            self.img.setColorMap(colormap_hot)
+        elif index == 1: # processed data
+            self.img.getImageItem().setImage(self.clean_data)
+            self.img.setColorMap(colormap_hot)
+        elif index == 2: # mito mask
+            self.img.getImageItem().setImage(self.mito_mask)
+            self.img.setColorMap(colormap_grey)
+        if self.colorhistogram_item_states[index] is not None:
+            restoreColorMapState(self.img.getHistogramWidget().item, self.colorhistogram_item_states[index])
+        self.current_index = index
 
     def save_mito_mask(self):
         """
@@ -176,11 +226,11 @@ class MitoDetectionWindow(QtWidgets.QWidget):
 
             # save everything
             output_path = os.path.join(mask_path, self.filename[:-4] + '.denoised.tiff')
-            img = Image.fromarray(self.denoised_data)
+            img = Image.fromarray(self.clean_data)
             img.save(output_path, format='tiff')
 
             output_path = os.path.join(mask_path, self.filename[:-4] + '.tiff')
-            img = Image.fromarray(self.denoised_data)
+            img = Image.fromarray(self.clean_data)
             img.save(output_path, format='tiff')
 
             self.status.emit('Mask saved.')
@@ -197,17 +247,13 @@ class MitoDetectionWindow(QtWidgets.QWidget):
             self.status.emit('No "Alexa 594_STED" stack in measurement!')
             return
         mito_stack = mito_stacks[0]
-        data, pixel_sizes = extract_image_from_imspector_stack(mito_stack)
+        self.raw_data, self.pixel_sizes = extract_image_from_imspector_stack(mito_stack)
 
-        # denoise image
-        self.denoised_data = ndimage.gaussian_filter(data, sigma=2)
-        self.denoised_data = self.denoised_data.astype(np.uint8)  # ich wandle mein denoised data mit astype in 8bit image um
+        # update
+        self.schedule_update()
 
-        # create mask
-        self.update_mask()
-        self.update_image()
-
-        self.status.emit('Loaded. Please adjust threshold.')
+        # status message
+        self.status.emit('Loaded. Please adjust parameters.')
 
 
 def detect_bax_cluster(denoised, pixel_sizes, cluster_threshold):
@@ -390,21 +436,6 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
 
         self.mode = 'cluster'  # 'cluster' or 'structures'
 
-        # custom glasbey on dark colormap
-        colormap = cm.get_cmap("hsv")  # cm.get_cmap("CMRmap")
-        colormap._init()
-        lut = (colormap._lut * 255).view(np.ndarray)  # Convert matplotlib colormap from 0-1 to 0 -255 for Qt
-        # np.random.shuffle(lut)
-        lut = np.vstack(([0, 0, 0, 0], lut[0::10,:]))
-        # Apply the colormap
-        # self.img.getImageItem().setLookupTable(lut)
-        self.colormap_glasbey = pg.ColorMap(pos=np.linspace(0.0, 1.0, 27), color=lut.astype(np.uint8))
-
-        self.colormap_grey = pg.ColorMap(pos = [0, 1], color = [(0, 0, 0, 255), (255, 255, 255, 255)])
-        # self.colormap_flame = pg.ColorMap(pos = [0.0, 0.2, 0.5, 0.8, 1.0], color = [(0, 0, 0, 255), (7, 0, 220, 255), (236, 0, 134, 255), (246, 246, 0, 255), (255, 255, 255, 255)])
-        self.colormap_hot = pg.ColorMap(pos = np.linspace(0.0, 1.0, 4), color=[(0, 0, 0, 255), (185, 0, 0, 255), (255, 220, 0, 255), (255, 255, 255, 255)])
-        self.colormap_tricolor = pg.ColorMap(pos=[0, 0.33, 0.66, 1], color=[(0, 0, 0, 255), (255, 255, 0, 255), (255, 0, 255, 255), (0, 255, 255, 255)])
-
         # file group box
         groupbox_file = FileSelectionGroupBox()
         groupbox_file.selected.connect(self.load_file)
@@ -416,33 +447,16 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         l.addWidget(self.img, stretch=1)
 
         ll = QtWidgets.QVBoxLayout()
-        self.label_threshold = QtWidgets.QLabel()
-        ll.addWidget(self.label_threshold)
-        self.slider_threshold = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.slider_threshold.setTickInterval(5)
-        self.slider_threshold.setTickPosition(QtWidgets.QSlider.TicksAbove)
-        self.slider_threshold.setSingleStep(1)
-        self.slider_threshold.setRange(1, 50)
-        self.slider_threshold.valueChanged.connect(self.threshold_changed)
-        ll.addWidget(self.slider_threshold)
 
-        self.label_structures_threshold = QtWidgets.QLabel()
-        ll.addWidget(self.label_structures_threshold)
-        self.slider_structures_threshold = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.slider_structures_threshold.setTickInterval(1)
-        self.slider_structures_threshold.setTickPosition(QtWidgets.QSlider.TicksAbove)
-        self.slider_structures_threshold.setSingleStep(1)
-        self.slider_structures_threshold.setRange(0, 10)
-        self.slider_structures_threshold.valueChanged.connect(self.structures_threshold_changed)
-        ll.addWidget(self.slider_structures_threshold)
-
+        # selection of image to show
         self.combobox_show = QtWidgets.QComboBox(self)
         self.combobox_show.addItems(['Data', 'Cluster', 'Structures', 'Structure types'])
         self.combobox_show.currentIndexChanged.connect(self.show)
         ll.addWidget(self.combobox_show)
 
+        # save button
         button_save = QtWidgets.QPushButton('Save')
-        button_save.clicked.connect(self.save)
+        button_save.clicked.connect(self.save_bax_structures)
         ll.addWidget(button_save)
         ll.addStretch()
         l.addLayout(ll)
@@ -452,14 +466,29 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         layout.addWidget(groupbox_file)
         layout.addWidget(groupbox_detection, stretch=1)
 
+        # timer
+        self.timer_update = QtCore.QTimer()
+        self.timer_update.setSingleShot(True)
+        self.timer_update.setInterval(500)
+        self.timer_update.timeout.connect(self.update)
+
         # initialization
+        self.raw_data = None
         self.cluster_mask = None
-        self.denoised_data = None
-        self.slider_threshold.setValue(15)
-        self.slider_structures_threshold.setValue(3)
+        self.clean_data = None
+
         self.current_index = None
         self.colorhistogram_item_states = [None, None, None, None]
         self.combobox_show.setCurrentIndex(0)
+
+    def schedule_update(self):
+        self.timer_update.start()
+
+    def update(self):
+        """
+        Compute everything new
+        """
+        pass
 
     def threshold_changed(self, value):
         self.label_threshold.setText('Cluster threshold ({})'.format(value))
@@ -472,21 +501,21 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         self.update_image()
 
     def update_cluster(self):
-        if self.denoised_data is not None:
-            self.cluster_mask = detect_bax_cluster(self.denoised_data, self.pixel_sizes, self.slider_threshold.value())
+        if self.clean_data is not None:
+            self.cluster_mask = detect_bax_cluster(self.clean_data, self.pixel_sizes, self.slider_threshold.value())
 
     def update_structures(self):
-        if self.denoised_data is not None:
+        if self.clean_data is not None:
             # strukturen detektieren
-            self.classified_skeletons, self.skel_label, self.holes_statistics = detect_bax_structures(self.denoised_data, self.pixel_sizes, self.slider_structures_threshold.value()/2, 20, 10, self.progress)
+            self.classified_skeletons, self.skel_label, self.holes_statistics = detect_bax_structures(self.clean_data, self.pixel_sizes, self.slider_structures_threshold.value() / 2, 20, 10, self.progress)
 
-    def save(self):
+    def save_bax_structures(self):
         """
 
         """
         # save denoised
         output_path = os.path.join(bax_path, self.filename[:-4] + '.denoised.tiff')
-        img = Image.fromarray(self.denoised_data)
+        img = Image.fromarray(self.clean_data)
         img.save(output_path, format='tiff')
 
         # save cluster maske
@@ -501,14 +530,14 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         self.update_image()
         
     def update_image(self):
-        if self.denoised_data is None:
+        if self.clean_data is None:
             return
         idx = self.combobox_show.currentIndex()
         # store state
         if self.current_index is not None:
             self.colorhistogram_item_states[self.current_index] = saveColorMapState(self.img.getHistogramWidget().item)
         if idx == 0: # data
-            self.img.getImageItem().setImage(self.denoised_data)
+            self.img.getImageItem().setImage(self.clean_data)
             # self.img.setImage(self.denoised_data)
             if self.colorhistogram_item_states[idx] is not None:
                 restoreColorMapState(self.img.getHistogramWidget().item, self.colorhistogram_item_states[idx])
@@ -549,7 +578,7 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
             return
         stack = bax_stacks[0]
         image, self.pixel_sizes = extract_image_from_imspector_stack(stack)  # in den utils zu finden
-        self.denoised_data = denoise_image(image)
+        self.clean_data = clean_image(image)
 
         # cluster detektieren
         self.update_cluster()
@@ -564,11 +593,13 @@ class MainWindow(QtWidgets.QMainWindow):
     The main window of the Bax analysis GUI.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, qapp):
         """
         Sets up the main window
         """
-        super().__init__(*args, **kwargs)
+        super().__init__()
+
+        self.qapp = qapp
 
         # window properties
         self.setMinimumSize(800, 600)
@@ -636,13 +667,33 @@ if __name__ == '__main__':
     if not os.path.isdir(bax_path):
         os.makedirs(bax_path)
 
+    # colormaps
+
+    # custom glasbey on dark colormap
+    colormap = cm.get_cmap("hsv")  # cm.get_cmap("CMRmap")
+    colormap._init()
+    lut = (colormap._lut * 255).view(np.ndarray)  # Convert matplotlib colormap from 0-1 to 0 -255 for Qt
+    # np.random.shuffle(lut)
+    lut = np.vstack(([0, 0, 0, 0], lut[0::10, :]))
+    # Apply the colormap
+    # self.img.getImageItem().setLookupTable(lut)
+    colormap_glasbey = pg.ColorMap(pos=np.linspace(0.0, 1.0, 27), color=lut.astype(np.uint8))
+    colormap_grey = pg.ColorMap(pos=[0, 1], color=[(0, 0, 0, 255), (255, 255, 255, 255)])
+    colormap_flame = pg.ColorMap(pos = [0.0, 0.2, 0.5, 0.8, 1.0], color = [(0, 0, 0, 255), (7, 0, 220, 255), (236, 0, 134, 255), (246, 246, 0, 255), (255, 255, 255, 255)])
+    colormap_hot = pg.ColorMap(pos=np.linspace(0.0, 1.0, 4),
+                                    color=[(0, 0, 0, 255), (185, 0, 0, 255), (255, 220, 0, 255),
+                                           (255, 255, 255, 255)])
+    colormap_tricolor = pg.ColorMap(pos=[0, 0.33, 0.66, 1],
+                                         color=[(0, 0, 0, 255), (255, 255, 0, 255), (255, 0, 255, 255),
+                                                (0, 255, 255, 255)])
+
     # create app
     app = QtWidgets.QApplication([])
     icon_file = os.path.join(gui_path, 'icons8-microscope-30.png')
     app.setWindowIcon(QtGui.QIcon(icon_file))
 
     # show main window
-    main_window = MainWindow()
+    main_window = MainWindow(app)
     main_window.show()
 
     # start Qt app execution
