@@ -108,6 +108,13 @@ class MitoDetectionWindow(QtWidgets.QWidget):
         l.addWidget(self.img, stretch=1)
         ll = QtWidgets.QVBoxLayout()
 
+        # selection of image to show
+        self.combobox_show = QtWidgets.QComboBox(self)
+        image_displays = ['Raw Data', 'Clean data', 'Mito mask']
+        self.combobox_show.addItems(image_displays)
+        self.combobox_show.currentIndexChanged.connect(self.update_image)
+        ll.addWidget(self.combobox_show)
+
         # signal fwhm
         ll.addWidget(QtWidgets.QLabel('Signal FWHM (nm)'))
         self.spinbox_signal_fwhm = create_spinbox(40, 200, 20, self.schedule_update)
@@ -128,17 +135,11 @@ class MitoDetectionWindow(QtWidgets.QWidget):
         self.spinbox_rel_threshold = create_spinbox(0, 100, 1, self.schedule_update)
         ll.addWidget(self.spinbox_rel_threshold)
 
-        # selection of image to show
-        self.combobox_show = QtWidgets.QComboBox(self)
-        self.combobox_show.addItems(['Raw Data', 'Processed data', 'Mito mask'])
-        self.combobox_show.currentIndexChanged.connect(self.update_image)
-        ll.addWidget(self.combobox_show)
-
         # save button
         button_save = QtWidgets.QPushButton('Save')
         button_save.clicked.connect(self.save_mito_mask)
-        ll.addWidget(button_save)
         ll.addStretch()
+        ll.addWidget(button_save)
         l.addLayout(ll)
 
         # top layout
@@ -161,7 +162,7 @@ class MitoDetectionWindow(QtWidgets.QWidget):
         self.spinbox_background_fwhm.setValue(600)
         self.spinbox_bg_subtraction_factor.setValue(80)
         self.spinbox_rel_threshold.setValue(10)
-        self.colorhistogram_item_states = [None, None, None, None]
+        self.colorhistogram_item_states = [None] * len(image_displays)
         self.combobox_show.setCurrentIndex(0)
 
     def schedule_update(self):
@@ -176,7 +177,6 @@ class MitoDetectionWindow(QtWidgets.QWidget):
 
         # status
         self.status.emit('Updating')
-        print('updating')
 
         # denoise image
         px = self.pixel_sizes[0] * 1000 # convert to nm
@@ -208,7 +208,7 @@ class MitoDetectionWindow(QtWidgets.QWidget):
         if index == 0: # raw data
             self.img.getImageItem().setImage(self.raw_data)
             self.img.setColorMap(colormap_hot)
-        elif index == 1: # processed data
+        elif index == 1: # clean data
             self.img.getImageItem().setImage(self.clean_data)
             self.img.setColorMap(colormap_hot)
         elif index == 2: # mito mask
@@ -256,7 +256,7 @@ class MitoDetectionWindow(QtWidgets.QWidget):
         self.status.emit('Loaded. Please adjust parameters.')
 
 
-def detect_bax_cluster(denoised, pixel_sizes, cluster_threshold):
+def detect_bax_cluster(denoised, pixel_sizes, cluster_threshold, minimal_area_size):
     '''
     Detektiert einzelne Cluster
 
@@ -267,7 +267,7 @@ def detect_bax_cluster(denoised, pixel_sizes, cluster_threshold):
 
     # maske erstellen
     maske = denoised > cluster_threshold
-    minimal_area = 3.14 * (0.1)**2 # cluster müssen mindestens eine fläche von 100nm2PI haben
+    minimal_area = 3.14 * (minimal_area_size)**2 # cluster müssen mindestens eine fläche von 100nm2PI haben
 
     # labeln der cluster-segment und größe pro segment
     labeled_mask, number_clusters = ndimage.measurements.label(maske)
@@ -334,7 +334,7 @@ def skeletonize_and_detect_holes(mask):
     return skel_label, skel_number, skeleton_statistics
 
 
-def detect_bax_structures(denoised, pixel_sizes, segment_threshold, minimal_skeleton_size, dilation_size, progress):
+def detect_bax_structures(denoised, segment_threshold, minimal_skeleton_size, dilation_size, progress):
 
     start = time.time()
     # segmentieren mit kleineren intensity threshold
@@ -450,15 +450,56 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
 
         # selection of image to show
         self.combobox_show = QtWidgets.QComboBox(self)
-        self.combobox_show.addItems(['Data', 'Cluster', 'Structures', 'Structure types'])
-        self.combobox_show.currentIndexChanged.connect(self.show)
+        image_displays = ['Raw Data', 'Clean Data', 'Cluster', 'Structures', 'Structure types']
+        self.combobox_show.addItems(image_displays)
+        self.combobox_show.currentIndexChanged.connect(self.update_image)
         ll.addWidget(self.combobox_show)
+
+        # signal fwhm
+        ll.addWidget(QtWidgets.QLabel('Signal FWHM (nm)'))
+        self.spinbox_signal_fwhm = create_spinbox(40, 200, 20, self.schedule_update)
+        ll.addWidget(self.spinbox_signal_fwhm)
+
+        # background fwhm
+        ll.addWidget(QtWidgets.QLabel('Background FWHM (nm)'))
+        self.spinbox_background_fwhm = create_spinbox(500, 1000, 100, self.schedule_update)
+        ll.addWidget(self.spinbox_background_fwhm)
+
+        # subtraction factor
+        ll.addWidget(QtWidgets.QLabel('Background subtraction (%)'))
+        self.spinbox_bg_subtraction_factor = create_spinbox(0, 100, 5, self.schedule_update)
+        ll.addWidget(self.spinbox_bg_subtraction_factor)
+
+        # cluster threshold
+        ll.addWidget(QtWidgets.QLabel('Cluster: rel. threshold (%)'))
+        self.spinbox_cluster_rel_threshold = create_spinbox(0, 100, 1, self.schedule_update)
+        ll.addWidget(self.spinbox_cluster_rel_threshold)
+
+        # cluster minimal area
+        ll.addWidget(QtWidgets.QLabel('Cluster: minimal area size (nm)'))
+        self.spinbox_cluster_min_area_size = create_spinbox(0, 1000, 20, self.schedule_update)
+        ll.addWidget(self.spinbox_cluster_min_area_size)
+
+        # structures threshold
+        ll.addWidget(QtWidgets.QLabel('Structures: rel. threshold (%)'))
+        self.spinbox_structures_rel_threshold = create_spinbox(0, 100, 1, self.schedule_update)
+        ll.addWidget(self.spinbox_structures_rel_threshold)
+
+        # structures minimal skeleton length
+        ll.addWidget(QtWidgets.QLabel('Structures: min. skeleton length'))
+        self.spinbox_structures_min_skel_length = create_spinbox(0, 1000, 1, self.schedule_update)
+        ll.addWidget(self.spinbox_structures_min_skel_length)
+
+        # structures dilation strength
+        ll.addWidget(QtWidgets.QLabel('Structures: dilation strength'))
+        self.spinbox_structures_dilation_strength = create_spinbox(0, 100, 1, self.schedule_update)
+        ll.addWidget(self.spinbox_structures_dilation_strength)
 
         # save button
         button_save = QtWidgets.QPushButton('Save')
         button_save.clicked.connect(self.save_bax_structures)
-        ll.addWidget(button_save)
         ll.addStretch()
+        ll.addWidget(button_save)
         l.addLayout(ll)
 
         # top layout
@@ -476,9 +517,18 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         self.raw_data = None
         self.cluster_mask = None
         self.clean_data = None
-
         self.current_index = None
-        self.colorhistogram_item_states = [None, None, None, None]
+
+        self.spinbox_signal_fwhm.setValue(100)
+        self.spinbox_background_fwhm.setValue(600)
+        self.spinbox_bg_subtraction_factor.setValue(80)
+        self.spinbox_cluster_rel_threshold.setValue(20)
+        self.spinbox_cluster_min_area_size.setValue(100)
+        self.spinbox_structures_rel_threshold.setValue(5)
+        self.spinbox_structures_min_skel_length.setValue(20)
+        self.spinbox_structures_dilation_strength.setValue(10)
+
+        self.colorhistogram_item_states = [None] * len(image_displays)
         self.combobox_show.setCurrentIndex(0)
 
     def schedule_update(self):
@@ -486,28 +536,40 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
 
     def update(self):
         """
-        Compute everything new
+        Compute everything new and update display
         """
-        pass
+        if self.raw_data is None:
+            return
 
-    def threshold_changed(self, value):
-        self.label_threshold.setText('Cluster threshold ({})'.format(value))
+        # status
+        self.status.emit('Updating')
+        print('updating')
+
+        # denoise image
+        px = self.pixel_sizes[0] * 1000 # convert to nm
+        noise_sigma = self.spinbox_signal_fwhm.value() / px / 2.35  # conversion FWHM to sigma = 2.35
+        background_sigma = self.spinbox_background_fwhm.value() / px / 2.35
+        subtraction_fraction = self.spinbox_bg_subtraction_factor.value() / 100
+        self.clean_data, self.denoised_data, self.background_data = clean_image(self.raw_data, noise_sigma, background_sigma, subtraction_fraction)
+
         self.update_cluster()
-        self.update_image()
-
-    def structures_threshold_changed(self, value):
-        self.label_structures_threshold.setText('Structures threshold ({})'.format(value))
         self.update_structures()
         self.update_image()
 
     def update_cluster(self):
         if self.clean_data is not None:
-            self.cluster_mask = detect_bax_cluster(self.clean_data, self.pixel_sizes, self.slider_threshold.value())
+            threshold = np.max(self.clean_data) * self.spinbox_cluster_rel_threshold.value() / 100
+            minimal_area_size = self.spinbox_cluster_min_area_size.value() / 1000 # conversion to pixel_sizes
+            self.cluster_mask = detect_bax_cluster(self.clean_data, self.pixel_sizes, threshold, minimal_area_size)
 
     def update_structures(self):
         if self.clean_data is not None:
             # strukturen detektieren
-            self.classified_skeletons, self.skel_label, self.holes_statistics = detect_bax_structures(self.clean_data, self.pixel_sizes, self.slider_structures_threshold.value() / 2, 20, 10, self.progress)
+            threshold = np.max(self.clean_data) * self.spinbox_structures_rel_threshold.value() / 100
+            minimal_skeleton_size = self.spinbox_structures_min_skel_length.value()
+            dilation_size = self.spinbox_structures_dilation_strength.value()
+            self.classified_skeletons, self.skel_label, self.holes_statistics = detect_bax_structures(self.clean_data, threshold, minimal_skeleton_size, dilation_size, self.progress)
+
 
     def save_bax_structures(self):
         """
@@ -525,45 +587,31 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
 
         self.status.emit('Everything is saved')
 
-    def show(self, index):
-        #print(index)
-        self.update_image()
-        
-    def update_image(self):
-        if self.clean_data is None:
+    def update_image(self, _=None):
+        if self.raw_data is None:
             return
-        idx = self.combobox_show.currentIndex()
+        index = self.combobox_show.currentIndex()
         # store state
         if self.current_index is not None:
             self.colorhistogram_item_states[self.current_index] = saveColorMapState(self.img.getHistogramWidget().item)
-        if idx == 0: # data
+        if index == 0: # data
+            self.img.getImageItem().setImage(self.raw_data)
+            self.img.setColorMap(colormap_hot)
+        elif index == 1: # clean data
             self.img.getImageItem().setImage(self.clean_data)
-            # self.img.setImage(self.denoised_data)
-            if self.colorhistogram_item_states[idx] is not None:
-                restoreColorMapState(self.img.getHistogramWidget().item, self.colorhistogram_item_states[idx])
-            else:
-                #self.img.setColorMap(self.colormap_grey)
-                self.img.setColorMap(self.colormap_hot)
-        elif idx == 1: # cluster
+            self.img.setColorMap(colormap_hot)
+        elif index == 2: # cluster
             self.img.getImageItem().setImage(self.cluster_mask)
-            # self.img.setImage(self.cluster_mask)
-            if self.colorhistogram_item_states[idx] is not None:
-                restoreColorMapState(self.img.getHistogramWidget().item, self.colorhistogram_item_states[idx])
-            else:
-                self.img.setColorMap(self.colormap_glasbey)
-        elif idx == 2: # skel labels
+            self.img.setColorMap(colormap_glasbey)
+        elif index == 3: # skel labels
             self.img.getImageItem().setImage(self.skel_label)
-            if self.colorhistogram_item_states[idx] is not None:
-                restoreColorMapState(self.img.getHistogramWidget().item, self.colorhistogram_item_states[idx])
-            else:
-                self.img.setColorMap(self.colormap_glasbey)
-        elif idx == 3: # skel type
+            self.img.setColorMap(colormap_glasbey)
+        elif index == 4: # skel type
             self.img.getImageItem().setImage(self.classified_skeletons)
-            if self.colorhistogram_item_states[idx] is not None:
-                restoreColorMapState(self.img.getHistogramWidget().item, self.colorhistogram_item_states[idx])
-            else:
-                self.img.setColorMap(self.colormap_tricolor)
-        self.current_index = idx
+            self.img.setColorMap(colormap_tricolor)
+        if self.colorhistogram_item_states[index] is not None:
+            restoreColorMapState(self.img.getHistogramWidget().item, self.colorhistogram_item_states[index])
+        self.current_index = index
 
     def load_file(self, file):
         """
@@ -577,15 +625,13 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
             self.status.emit('No "STAR RED_STED" stack in measurement!')
             return
         stack = bax_stacks[0]
-        image, self.pixel_sizes = extract_image_from_imspector_stack(stack)  # in den utils zu finden
-        self.clean_data = clean_image(image)
+        self.raw_data, self.pixel_sizes = extract_image_from_imspector_stack(stack)  # in den utils zu finden
 
-        # cluster detektieren
-        self.update_cluster()
-        self.update_structures()
-        self.update_image()
+        # update
+        self.schedule_update()
 
-        self.status.emit('Loaded. Please adjust thresholds.')
+        # status message
+        self.status.emit('Loaded. Please adjust parameters.')
 
 
 class MainWindow(QtWidgets.QMainWindow):
