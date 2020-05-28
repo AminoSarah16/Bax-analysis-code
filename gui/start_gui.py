@@ -5,6 +5,8 @@ Starts the GUI, uses PyQt5 for the GUI and pyqtgraph for the image display.
 import os
 import sys
 import time
+import json
+from functools import partial
 from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
 import cv2
@@ -59,17 +61,20 @@ class FileSelectionGroupBox(QtWidgets.QGroupBox):
         layout.addWidget(self.label, stretch=1)
         layout.addWidget(button)
 
+        self.current_path = root_path
+
     def select_file(self):
         """
 
         """
-        file = QtWidgets.QFileDialog.getOpenFileName(self, 'Open File', root_path, 'Measurement (*.msr);;All files (*.*)')
+        file = QtWidgets.QFileDialog.getOpenFileName(self, 'Open File', self.current_path, 'Measurement (*.msr);;All files (*.*)')
         file = file[0]
         if not file or not os.path.isfile(file):
             self.label.setText('')
         else:
-            _, tail = os.path.split(file)
-            self.label.setText(tail)
+            dirpath, filename = os.path.split(file)
+            self.current_path = dirpath
+            self.label.setText(filename)
             self.selected.emit(file)
 
 def create_spinbox(minimum, maximum, step, value_changed_slot):
@@ -117,12 +122,12 @@ class MitoDetectionWindow(QtWidgets.QWidget):
 
         # signal fwhm
         ll.addWidget(QtWidgets.QLabel('Signal FWHM (nm)'))
-        self.spinbox_signal_fwhm = create_spinbox(40, 200, 20, self.schedule_update)
+        self.spinbox_signal_fwhm = create_spinbox(40, 500, 20, self.schedule_update)
         ll.addWidget(self.spinbox_signal_fwhm)
 
         # background fwhm
         ll.addWidget(QtWidgets.QLabel('Background FWHM (nm)'))
-        self.spinbox_background_fwhm = create_spinbox(500, 1000, 100, self.schedule_update)
+        self.spinbox_background_fwhm = create_spinbox(500, 5000, 100, self.schedule_update)
         ll.addWidget(self.spinbox_background_fwhm)
 
         # subtraction factor
@@ -153,14 +158,22 @@ class MitoDetectionWindow(QtWidgets.QWidget):
         self.timer_update.setInterval(500)
         self.timer_update.timeout.connect(self.update)
 
+        # shortcuts
+        shortcut_raw = QtWidgets.QShortcut(QtGui.QKeySequence(QtCore.Qt.CTRL + QtCore.Qt.Key_1), self)
+        shortcut_raw.activated.connect(partial(self.combobox_show.setCurrentIndex, 0))
+        shortcut_clean = QtWidgets.QShortcut(QtGui.QKeySequence(QtCore.Qt.CTRL + QtCore.Qt.Key_2), self)
+        shortcut_clean.activated.connect(partial(self.combobox_show.setCurrentIndex, 1))
+        shortcut_mito = QtWidgets.QShortcut(QtGui.QKeySequence(QtCore.Qt.CTRL + QtCore.Qt.Key_3), self)
+        shortcut_mito.activated.connect(partial(self.combobox_show.setCurrentIndex, 2))
+
         # initialization
         self.raw_data = None
         self.clean_data = None
         self.mito_mask = None
         self.current_index = None
-        self.spinbox_signal_fwhm.setValue(100)
-        self.spinbox_background_fwhm.setValue(600)
-        self.spinbox_bg_subtraction_factor.setValue(80)
+        self.spinbox_signal_fwhm.setValue(200)
+        self.spinbox_background_fwhm.setValue(2000)
+        self.spinbox_bg_subtraction_factor.setValue(50)
         self.spinbox_rel_threshold.setValue(10)
         self.colorhistogram_item_states = [None] * len(image_displays)
         self.combobox_show.setCurrentIndex(0)
@@ -224,14 +237,28 @@ class MitoDetectionWindow(QtWidgets.QWidget):
         """
         if self.mito_mask is not None:
 
-            # save everything
-            output_path = os.path.join(mask_path, self.filename[:-4] + '.denoised.tiff')
+            # save clean
+            output_path = os.path.join(mask_path, self.filename[:-4] + '.clean.tiff')
             img = Image.fromarray(self.clean_data)
             img.save(output_path, format='tiff')
 
-            output_path = os.path.join(mask_path, self.filename[:-4] + '.tiff')
-            img = Image.fromarray(self.clean_data)
+            # save mito mask
+            output_path = os.path.join(mask_path, self.filename[:-4] + '.mito-mask.tiff')
+            img = Image.fromarray(self.mito_mask)
             img.save(output_path, format='tiff')
+
+            # save parameters
+            parameters = {
+                'file': self.filename,
+                'signal-fwhm': self.spinbox_signal_fwhm.value(),
+                'background-fwhm': self.spinbox_background_fwhm.value(),
+                'background-subtraction-factor': self.spinbox_bg_subtraction_factor.value(),
+                'relative-threshold': self.spinbox_rel_threshold.value()
+            }
+            # output
+            output_path = os.path.join(mask_path, self.filename[:-4] + '.mito-mask-parameters.json')
+            text = json.dumps(parameters, indent=1)
+            write_text(output_path, text)
 
             self.status.emit('Mask saved.')
 
@@ -242,11 +269,9 @@ class MitoDetectionWindow(QtWidgets.QWidget):
         """
         _, self.filename = os.path.split(file)
         # load mito image
-        mito_stacks = read_stack_from_imspector_measurement(file, 'Alexa 594_STED')
-        if len(mito_stacks) != 1:
-            self.status.emit('No "Alexa 594_STED" stack in measurement!')
-            return
-        mito_stack = mito_stacks[0]
+        sted_stacks = read_sted_stacks_from_imspector_measurement(file)
+        # mito_stacks = read_stack_from_imspector_measurement(file, 'Alexa 594_STED')
+        mito_stack = sted_stacks[0]  # mito stack is the first sted stack??
         self.raw_data, self.pixel_sizes = extract_image_from_imspector_stack(mito_stack)
 
         # update
@@ -254,6 +279,11 @@ class MitoDetectionWindow(QtWidgets.QWidget):
 
         # status message
         self.status.emit('Loaded. Please adjust parameters.')
+
+        # test for existing output
+        output_path = os.path.join(mask_path, self.filename[:-4] + '.mito-mask.tiff')
+        if os.path.isfile(output_path):
+            self.status.emit('Mito mask file already existing. Save will overwrite.')
 
 
 def detect_bax_cluster(denoised, pixel_sizes, cluster_threshold, minimal_area_size):
@@ -517,7 +547,7 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         self.raw_data = None
         self.cluster_mask = None
         self.clean_data = None
-        self.current_index = None
+        self.image_index_history = []
 
         self.spinbox_signal_fwhm.setValue(100)
         self.spinbox_background_fwhm.setValue(600)
@@ -592,8 +622,8 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
             return
         index = self.combobox_show.currentIndex()
         # store state
-        if self.current_index is not None:
-            self.colorhistogram_item_states[self.current_index] = saveColorMapState(self.img.getHistogramWidget().item)
+        if self.image_index_history:
+            self.colorhistogram_item_states[self.image_index_history[-1]] = saveColorMapState(self.img.getHistogramWidget().item)
         if index == 0: # data
             self.img.getImageItem().setImage(self.raw_data)
             self.img.setColorMap(colormap_hot)
@@ -611,7 +641,17 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
             self.img.setColorMap(colormap_tricolor)
         if self.colorhistogram_item_states[index] is not None:
             restoreColorMapState(self.img.getHistogramWidget().item, self.colorhistogram_item_states[index])
-        self.current_index = index
+        self.image_index_history.append(index)
+        if len(self.image_index_history) > 2:
+            self.image_index_history = self.image_index_history[-2:] # only keep last two
+
+    def eventFilter(self, obj: 'QObject', event: 'QEvent') -> bool:
+        if obj == self and event.type() == QtCore.QEvent.Wheel and event.button() == QtCore.Qt.MiddleButton and len(self.image_index_history) >= 2:
+            self.combobox_show.setCurrentIndex(self.image_index_history[-2])
+            event.accept()
+            return True
+        else:
+            return super().eventFilter(obj, event)
 
     def load_file(self, file):
         """
@@ -676,6 +716,7 @@ class MainWindow(QtWidgets.QMainWindow):
         widget = BaxPhenotypeWindow()
         widget.status.connect(self.setStatus)
         widget.progress.connect(self.setProgressBar)
+        self.qapp.installEventFilter(widget)
         self.setCentralWidget(widget)
 
     def setStatus(self, message):

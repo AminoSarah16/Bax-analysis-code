@@ -14,6 +14,22 @@ structuring_element_block = ndimage.morphology.generate_binary_structure(2, 2)  
 structuring_element_cross = ndimage.morphology.generate_binary_structure(2, 1)  # 3x3 cross
 
 
+def read_text(file):
+    """
+    Reads a whole text file (UTF-8 encoded).
+    """
+    with open(file, mode='r', encoding='utf-8', errors='ignore') as f:
+        text = f.read()
+    return text
+
+
+def write_text(file, text):
+    """
+    Writes a whole text file (UTF-8 encoded).
+    """
+    with open(file, mode='w', encoding='utf-8') as f:
+        f.write(text)
+
 def get_root_path():
     """
     Retrieves the root path
@@ -45,6 +61,31 @@ def read_stack_from_imspector_measurement(file_path, name_part):
     stacks = [stack for stack in stacks if name_part in stack.name()]
 
     return stacks
+
+
+def read_sted_stacks_from_imspector_measurement(file_path):
+    """
+    Mit Hilfe von Sarah und aufgrund der vielen Probleme mit den Stacks hier die komplizierte Formel um die MitoStacks
+    herauszuholen. Eigentlich heißen die Stacks "Alexa 594_STED" aber halt nicht immer...
+    """
+
+    # File lesen
+    im_file = sp.File(file_path, sp.File.Read)
+    number_stacks = im_file.number_of_stacks()
+
+    # lese alle stacks in eine liste
+    stacks = []
+    for i in range(number_stacks):
+        stack = im_file.read(i)
+        stacks.append(stack)
+
+    sted_stacks = [stack for stack in stacks if " " not in stack.name() or "STED" in stack.name() or "Ch2 {2}" in stack.name() or "Ch4 {2}" in stack.name()]
+
+    # if we get more than 2 stacks (one AF594 and one STAR RED) then it's most likely duplicates and we will just remove them from the list
+    if len(sted_stacks) > 2:
+        sted_stacks = sted_stacks[:2]
+
+    return sted_stacks
 
 
 def extract_image_from_imspector_stack(stack):
