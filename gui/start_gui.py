@@ -237,14 +237,19 @@ class MitoDetectionWindow(QtWidgets.QWidget):
         """
         if self.mito_mask is not None:
 
+            # save mito mask
+            output_path = os.path.join(mask_path, self.filename[:-4] + '.mito-mask.tiff')
+            if os.path.isfile(output_path):
+                # already existing, ask before overwriting
+                answer = QtWidgets.QMessageBox.warning(self, 'File exists', 'Mito mask already saved, overwrite?', QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel)
+                if answer == QtWidgets.QMessageBox.Cancel:
+                    return
+            img = Image.fromarray(self.mito_mask)
+            img.save(output_path, format='tiff')
+
             # save clean
             output_path = os.path.join(mask_path, self.filename[:-4] + '.clean.tiff')
             img = Image.fromarray(self.clean_data)
-            img.save(output_path, format='tiff')
-
-            # save mito mask
-            output_path = os.path.join(mask_path, self.filename[:-4] + '.mito-mask.tiff')
-            img = Image.fromarray(self.mito_mask)
             img.save(output_path, format='tiff')
 
             # save parameters
@@ -280,6 +285,7 @@ class MitoDetectionWindow(QtWidgets.QWidget):
         # status message
         self.status.emit('Loaded. Please adjust parameters.')
 
+        # TODO if file already exist, maybe load old parameters and set them
         # test for existing output
         output_path = os.path.join(mask_path, self.filename[:-4] + '.mito-mask.tiff')
         if os.path.isfile(output_path):
@@ -487,12 +493,12 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
 
         # signal fwhm
         ll.addWidget(QtWidgets.QLabel('Signal FWHM (nm)'))
-        self.spinbox_signal_fwhm = create_spinbox(40, 200, 20, self.schedule_update)
+        self.spinbox_signal_fwhm = create_spinbox(40, 500, 20, self.schedule_update)
         ll.addWidget(self.spinbox_signal_fwhm)
 
         # background fwhm
         ll.addWidget(QtWidgets.QLabel('Background FWHM (nm)'))
-        self.spinbox_background_fwhm = create_spinbox(500, 1000, 100, self.schedule_update)
+        self.spinbox_background_fwhm = create_spinbox(500, 5000, 100, self.schedule_update)
         ll.addWidget(self.spinbox_background_fwhm)
 
         # subtraction factor
@@ -542,6 +548,18 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         self.timer_update.setSingleShot(True)
         self.timer_update.setInterval(500)
         self.timer_update.timeout.connect(self.update)
+
+        # shortcuts
+        shortcut_raw = QtWidgets.QShortcut(QtGui.QKeySequence(QtCore.Qt.CTRL + QtCore.Qt.Key_1), self)
+        shortcut_raw.activated.connect(partial(self.combobox_show.setCurrentIndex, 0))
+        shortcut_clean = QtWidgets.QShortcut(QtGui.QKeySequence(QtCore.Qt.CTRL + QtCore.Qt.Key_2), self)
+        shortcut_clean.activated.connect(partial(self.combobox_show.setCurrentIndex, 1))
+        shortcut_cluster = QtWidgets.QShortcut(QtGui.QKeySequence(QtCore.Qt.CTRL + QtCore.Qt.Key_3), self)
+        shortcut_cluster.activated.connect(partial(self.combobox_show.setCurrentIndex, 2))
+        shortcut_structures = QtWidgets.QShortcut(QtGui.QKeySequence(QtCore.Qt.CTRL + QtCore.Qt.Key_4), self)
+        shortcut_structures.activated.connect(partial(self.combobox_show.setCurrentIndex, 3))
+        shortcut_structures_type = QtWidgets.QShortcut(QtGui.QKeySequence(QtCore.Qt.CTRL + QtCore.Qt.Key_5), self)
+        shortcut_structures_type.activated.connect(partial(self.combobox_show.setCurrentIndex, 4))
 
         # initialization
         self.raw_data = None
@@ -598,22 +616,47 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
             threshold = np.max(self.clean_data) * self.spinbox_structures_rel_threshold.value() / 100
             minimal_skeleton_size = self.spinbox_structures_min_skel_length.value()
             dilation_size = self.spinbox_structures_dilation_strength.value()
-            self.classified_skeletons, self.skel_label, self.holes_statistics = detect_bax_structures(self.clean_data, threshold, minimal_skeleton_size, dilation_size, self.progress)
-
+            # TODO temporarily out of order (concentrating on clusters)
+            # self.classified_skeletons, self.skel_label, self.holes_statistics = detect_bax_structures(self.clean_data, threshold, minimal_skeleton_size, dilation_size, self.progress)
+            self.classified_skeletons = self.clean_data
+            self.skel_label = self.clean_data
 
     def save_bax_structures(self):
         """
 
         """
+        # save cluster mask
+        output_path = os.path.join(bax_path, self.filename[:-4] + '.cluster.tiff')
+        # TODO check that tiff really stores more than 255 values
+        if os.path.isfile(output_path):
+            # already existing, ask before overwriting
+            answer = QtWidgets.QMessageBox.warning(self, 'File exists', 'Cluster mask already saved, overwrite?',
+                                                   QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel)
+            if answer == QtWidgets.QMessageBox.Cancel:
+                return
+        img = Image.fromarray(self.cluster_mask)
+        img.save(output_path, format='tiff')
+
         # save denoised
         output_path = os.path.join(bax_path, self.filename[:-4] + '.denoised.tiff')
         img = Image.fromarray(self.clean_data)
         img.save(output_path, format='tiff')
 
-        # save cluster maske
-        output_path = os.path.join(bax_path, self.filename[:-4] + '.cluster.tiff')
-        img = Image.fromarray(self.cluster_mask)
-        img.save(output_path, format='tiff')
+        # save parameters
+        parameters = {
+            'file': self.filename,
+            'signal-fwhm': self.spinbox_signal_fwhm.value(),
+            'background-fwhm': self.spinbox_background_fwhm.value(),
+            'background-subtraction-factor': self.spinbox_bg_subtraction_factor.value(),
+            'cluster-relative-threshold': self.spinbox_cluster_rel_threshold.value(),
+            'cluster-min-area-size': self.spinbox_cluster_min_area_size.value(),
+            'structures-min_skel_length': self.spinbox_structures_min_skel_length.value(),
+            'structures-dilation-strength': self.spinbox_structures_dilation_strength.value()
+        }
+        # output
+        output_path = os.path.join(mask_path, self.filename[:-4] + '.bax-parameters.json')
+        text = json.dumps(parameters, indent=1)
+        write_text(output_path, text)
 
         self.status.emit('Everything is saved')
 
@@ -660,12 +703,12 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         self.mode = 'cluster'
         _, self.filename = os.path.split(file)
         # bax stack laden
-        bax_stacks = read_stack_from_imspector_measurement(file, 'STAR RED_STED')
-        if len(bax_stacks) != 1:
-            self.status.emit('No "STAR RED_STED" stack in measurement!')
-            return
-        stack = bax_stacks[0]
-        self.raw_data, self.pixel_sizes = extract_image_from_imspector_stack(stack)  # in den utils zu finden
+        # bax_stacks = read_stack_from_imspector_measurement(file, 'STAR RED_STED')
+        sted_stacks = read_sted_stacks_from_imspector_measurement(file)
+        bax_stack = sted_stacks[1]  # mito stack is the second sted stack??
+        self.raw_data, self.pixel_sizes = extract_image_from_imspector_stack(bax_stack)
+
+        # TODO if results already exists, load parameters and apply
 
         # update
         self.schedule_update()
