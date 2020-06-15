@@ -29,8 +29,9 @@ if __name__ == '__main__':
         for file in interesting_files:
             # load image and convert to numpy array
             file_path = os.path.join(dirpath, file)
-            print(os.path.isfile(file_path))
+            # print(os.path.isfile(file_path)) # only a check because one file was not readable
             if not os.path.isfile(file_path):
+                print("file {} not found".format(file_path))
                 continue
             img = np.array(Image.open(file_path))
             img = img.astype(np.float)
@@ -63,7 +64,7 @@ if __name__ == '__main__':
             print('{} has {} cells'.format(file, number_cells))
 
             # check: display
-            display_image((img[:, :, 0], labeled_mask), ('', ''))
+            # display_image((img[:, :, 0], labeled_mask), ('', '{}'.format(number_cells)))
 
             # save as tif
             output_data = labeled_mask.astype(np.uint8)

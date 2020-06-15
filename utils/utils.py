@@ -85,6 +85,10 @@ def read_sted_stacks_from_imspector_measurement(file_path):
     if len(sted_stacks) > 2:
         sted_stacks = sted_stacks[:2]
 
+    # now super special: if the file path contains '04_U2OS_DKO_plus_Bax_BH3i/replicate1/pcDNA', then the Mito and Bax channel are exchanged (antibodies exchanged or so... ask Sarah)
+    if '04_U2OS_DKO_plus_Bax_BH3i/replicate1/pcDNA' in file_path:
+        sted_stacks.reverse()
+
     return sted_stacks
 
 

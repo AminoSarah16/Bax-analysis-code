@@ -4,7 +4,8 @@
 - Separierung in ganze Zellen
   - Maske auf ursprüngliche Bilder für jede Zelle (*)
   - Speichern als tif bild in results/cell-masks
-  - Code: cell-separation/single_cell_separation.py
+  - Code: cell-separation/single_cell_separation_batch.py
+  - Output: results/cell-separations/*.tif (ImageJ - glasbey on dark)
 
 - Optional: Crosstalk der Detektionskanäle bestimmen und wenn vorhanden, rausrechnen
 
@@ -15,8 +16,9 @@
   - Adaptiver Threshold (manuell einstellen) (*)
   - auch Zellfläche erkennen (niedrigerer Threshold auf unspezifischen Zellhintergrund)
   - Speichern: .tiff und hdf5
-  - Code: mito-threshold/mito_detection.py
-  - geplant: GUI, um Parameter des Thresholdings besser einstellen zu können
+  - GUI, um Parameter des Thresholdings besser einstellen zu können
+  - Code: gui/start_gui (Mito mode)
+  - Output: results/mito-masks/*.mito-mask.tif (mito maske) und *.parameters.json (parameter)
 
 3. Bax-Kanal:
   - Bestimmen der Auflösung
@@ -33,6 +35,9 @@
   - Speichern:
     - als Bild: Colorcode nach Type (also nur 3 Farben oder so) .tiff .hdf5
     - als Liste von nummerierten Objekten mit Typnummer, Statistik und zugehöriger Liste von Pixeln als .json file
+
+
+    01_U2OS_DKO_plus_Bax_wt\replicate2\pcDNA\IF36_spl15_U2OS-DKO_pcDNA-Bax-wt_6hEx_14hAct_cytC-AF488_Tom20-AF594_Bax-SR_cl9_superEarly-rings-on-one-side-only.msr
 
 4. Quantifizierung:
     der Cluster, Ringe, Netzwerke, Sonstiges nach Mitonähe

@@ -326,7 +326,7 @@ def detect_bax_cluster(denoised, pixel_sizes, cluster_threshold, minimal_area_si
 
     # display_image((maske, labeled_mask), ('bax cluster', 'area filtered'))
 
-    return labeled_mask
+    return labeled_mask, number_clusters
 
 
 def skeletonize_and_detect_holes(mask):
@@ -493,7 +493,7 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
 
         # signal fwhm
         ll.addWidget(QtWidgets.QLabel('Signal FWHM (nm)'))
-        self.spinbox_signal_fwhm = create_spinbox(40, 500, 20, self.schedule_update)
+        self.spinbox_signal_fwhm = create_spinbox(20, 500, 20, self.schedule_update)
         ll.addWidget(self.spinbox_signal_fwhm)
 
         # background fwhm
@@ -505,6 +505,9 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         ll.addWidget(QtWidgets.QLabel('Background subtraction (%)'))
         self.spinbox_bg_subtraction_factor = create_spinbox(0, 100, 5, self.schedule_update)
         ll.addWidget(self.spinbox_bg_subtraction_factor)
+
+        self.label_clusters = QtWidgets.QLabel('Det. Clusters: 0')
+        ll.addWidget(self.label_clusters)
 
         # cluster threshold
         ll.addWidget(QtWidgets.QLabel('Cluster: rel. threshold (%)'))
@@ -570,8 +573,8 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         self.spinbox_signal_fwhm.setValue(100)
         self.spinbox_background_fwhm.setValue(600)
         self.spinbox_bg_subtraction_factor.setValue(80)
-        self.spinbox_cluster_rel_threshold.setValue(20)
-        self.spinbox_cluster_min_area_size.setValue(100)
+        self.spinbox_cluster_rel_threshold.setValue(5)
+        self.spinbox_cluster_min_area_size.setValue(10)
         self.spinbox_structures_rel_threshold.setValue(5)
         self.spinbox_structures_min_skel_length.setValue(20)
         self.spinbox_structures_dilation_strength.setValue(10)
@@ -608,7 +611,8 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         if self.clean_data is not None:
             threshold = np.max(self.clean_data) * self.spinbox_cluster_rel_threshold.value() / 100
             minimal_area_size = self.spinbox_cluster_min_area_size.value() / 1000 # conversion to pixel_sizes
-            self.cluster_mask = detect_bax_cluster(self.clean_data, self.pixel_sizes, threshold, minimal_area_size)
+            self.cluster_mask, number_clusters = detect_bax_cluster(self.clean_data, self.pixel_sizes, threshold, minimal_area_size)
+            self.label_clusters.setText('Det. Clusters: {}'.format(number_clusters))
 
     def update_structures(self):
         if self.clean_data is not None:
@@ -634,7 +638,7 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
                                                    QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel)
             if answer == QtWidgets.QMessageBox.Cancel:
                 return
-        img = Image.fromarray(self.cluster_mask)
+        img = Image.fromarray(self.cluster_mask) # contains clusters as cluster mask
         img.save(output_path, format='tiff')
 
         # save denoised
@@ -645,6 +649,7 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         # save parameters
         parameters = {
             'file': self.filename,
+            'pixel-sizes': self.pixel_sizes,
             'signal-fwhm': self.spinbox_signal_fwhm.value(),
             'background-fwhm': self.spinbox_background_fwhm.value(),
             'background-subtraction-factor': self.spinbox_bg_subtraction_factor.value(),
@@ -654,7 +659,7 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
             'structures-dilation-strength': self.spinbox_structures_dilation_strength.value()
         }
         # output
-        output_path = os.path.join(mask_path, self.filename[:-4] + '.bax-parameters.json')
+        output_path = os.path.join(bax_path, self.filename[:-4] + '.bax-parameters.json')
         text = json.dumps(parameters, indent=1)
         write_text(output_path, text)
 
