@@ -68,13 +68,20 @@ if __name__ == '__main__':
         condition = get_condition(file)
         replicate = get_replicate(file)
         print('\nwork on {} {} {}'.format(condition, replicate, file))
-        file_body = file[:-len(CLUSTER_EXTENSION)]
+        file_name = file[:-len(CLUSTER_EXTENSION)]
+        # file body is everything until after _cl (used to associate cell masks)
+        idx = file_name.find('_cl')
+        idx2 = file_name.find('_', idx+1)
+        if idx2 == -1:
+            idx2 = file_name.find('-', idx+1)
+        file_body = file_name[:idx2]
+        print(' file body {}'.format(file_body))
 
         # load cluster image
         all_clusters = np.array(Image.open(os.path.join(bax_path, file)))
 
         # search for corresponding mito mask
-        mito_file = os.path.join(mito_path, file_body + MITO_EXTENSION)
+        mito_file = os.path.join(mito_path, file_name + MITO_EXTENSION)
         if not os.path.isfile(mito_file):
             print(' mito mask not existing for {}'.format(file))
             RuntimeError('Please create mito mask')
@@ -83,13 +90,15 @@ if __name__ == '__main__':
         # search for corresponding cell separation
         cell_separation_file = None
         for name in cell_separation_files:
-            if name.startswith(file_body):
+            if name.startswith(file_body + '_') or name.startswith(file_body + '-'):
                 cell_separation_file = name
                 break
         if not cell_separation_file:
             print(' no cell separation file, assume single cell')
             cells = np.ones(all_clusters.shape) # 1 everywhere
         else:
+            cell_separation_files.remove(cell_separation_file)
+            print(' use cell separation {}'.format(cell_separation_file))
             cells = np.array(Image.open(os.path.join(cell_separation_path, cell_separation_file)))
         number_cells = int(np.max(cells))
 
@@ -164,6 +173,8 @@ if __name__ == '__main__':
             else:
                 bax_cluster_overlaps[key] = [cluster_overlaps]
 
+    if cell_separation_files:
+        print('unused cell separation files {}'.format(cell_separation_files))
 
     # sort results by condition, replicate, file name, cell
     bax_total_overlap_results.sort(key=lambda x: ''.join(x[:4]))
@@ -196,5 +207,3 @@ if __name__ == '__main__':
             writer.writerows(v)
         # print average overlap and how many have overlap
         print('large cluster overlaps {} - avg. overlap {:.2f}%, {:.2f}% with some kind of overlap'.format(k, np.mean(v)*100, np.mean(v>0)*100))
-
-
