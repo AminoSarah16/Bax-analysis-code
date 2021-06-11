@@ -2,12 +2,13 @@
 Hilfsfunktionen für alle Skripte.
 """
 
+import specpy as sp
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import scipy.ndimage as ndimage
 import configparser
-from utils import obf_support
+import skimage.morphology as morphology
 
 structuring_element_block = ndimage.morphology.generate_binary_structure(2, 2)  # 3x3 block
 structuring_element_cross = ndimage.morphology.generate_binary_structure(2, 1)  # 3x3 cross
@@ -66,24 +67,29 @@ def read_sted_stacks_from_imspector_measurement(file_path):
     """
     Mit Hilfe von Sarah und aufgrund der vielen Probleme mit den Stacks hier die komplizierte Formel um die MitoStacks
     herauszuholen. Eigentlich heißen die Stacks "Alexa 594_STED" aber halt nicht immer...
-
-    Erster Stack = Mito
-    Zweiter = Bax
     """
 
     # File lesen
-    im_file = obf_support.File(file_path)
-    number_stacks = len(im_file.stacks)
+    im_file = sp.File(file_path, sp.File.Read)
+    number_stacks = im_file.number_of_stacks()
 
-    mito_stacks = [stack for stack in im_file.stacks if 'Tom' in stack.name and 'STED' in stack.name]
-    if len(mito_stacks) != 1:
-        raise RuntimeError('Not exactly one Mito stack.')
+    # lese alle stacks in eine liste
+    stacks = []
+    for i in range(number_stacks):
+        stack = im_file.read(i)
+        stacks.append(stack)
 
-    bax_stacks = [stack for stack in im_file.stacks if 'Bax' in stack.name and 'STED' in stack.name]
-    if len(bax_stacks) != 1:
-        raise RuntimeError('Not exactly one Bax stack.')
+    sted_stacks = [stack for stack in stacks if " " not in stack.name() or "STED" in stack.name() or "Ch2 {2}" in stack.name() or "Ch4 {2}" in stack.name()]
 
-    return mito_stacks + bax_stacks
+    # if we get more than 2 stacks (one AF594 and one STAR RED) then it's most likely duplicates and we will just remove them from the list
+    if len(sted_stacks) > 2:
+        sted_stacks = sted_stacks[:2]
+
+    # now super special: if the file path contains '04_U2OS_DKO_plus_Bax_BH3i/replicate1/pcDNA', then the Mito and Bax channel are exchanged (antibodies exchanged or so... ask Sarah)
+    if '04_U2OS_DKO_plus_Bax_BH3i/replicate1/pcDNA' in file_path:
+        sted_stacks.reverse()
+
+    return sted_stacks
 
 
 def extract_image_from_imspector_stack(stack):
@@ -92,9 +98,13 @@ def extract_image_from_imspector_stack(stack):
     :param stack: Imspector stack 
     :return: Numpy array
     """
-    data = stack.data
+    data = stack.data()
 
     # Dimensionnen sind [1,1,Ny,Nx] wir wollen aber [Nx, Ny]
+
+    # reduce to [Ny, Nx]
+    size = data.shape
+    data = np.reshape(data, size[2:])
 
     # transponieren [Nx, Ny]
     data = np.transpose(data)
@@ -103,7 +113,7 @@ def extract_image_from_imspector_stack(stack):
     data = data.astype(np.float32)
 
     # compute pixel sizes
-    lengths = stack.lengths
+    lengths = stack.lengths()
     pixel_sizes = (lengths[0] / data.shape[0] / 1e-6, lengths[1] / data.shape[1] / 1e-6)  # conversion m to µm
 
     return data, pixel_sizes
