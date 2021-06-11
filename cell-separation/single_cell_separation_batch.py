@@ -33,6 +33,10 @@ if __name__ == '__main__':
             if not os.path.isfile(file_path):
                 print("file {} not found".format(file_path))
                 continue
+            output_file = os.path.join(cell_separation_path, file[:-len(file_suffix)] + '.tif')
+            #if os.path.isfile(output_file):
+            #    print("file already existing, skip")
+            #    continue
             img = np.array(Image.open(file_path))
             img = img.astype(np.float)
 
@@ -69,5 +73,4 @@ if __name__ == '__main__':
             # save as tif
             output_data = labeled_mask.astype(np.uint8)
             img = Image.fromarray(output_data)
-            output_file = os.path.join(cell_separation_path, file[:-len(file_suffix)] + '.tif')
             img.save(output_file, format='tiff')  # schaut schwarz aus wegen LUT (in ImageJ laden und glasbey anwenden)
