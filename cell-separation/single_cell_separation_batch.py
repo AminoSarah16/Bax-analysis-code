@@ -68,7 +68,7 @@ if __name__ == '__main__':
             print('{} has {} cells'.format(file, number_cells))
 
             # check: display
-            # display_image((img[:, :, 0], labeled_mask), ('', '{}'.format(number_cells)))
+            display_image((img[:, :, 0], labeled_mask), ('', '{}'.format(number_cells)))
 
             # save as tif
             output_data = labeled_mask.astype(np.uint8)

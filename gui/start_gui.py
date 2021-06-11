@@ -14,6 +14,10 @@ from matplotlib import cm
 from PIL import Image  # https://pillow.readthedocs.io/en/stable/handbook/index.html
 from utils.utils import *
 
+# TODO Löcher in Clustern schließen in Cluster Detektion
+# TODO spektral crosstalk
+# TODO Mindestgröße für Mitos
+
 
 def saveColorMapState(histogramLUTItem):
     return {
@@ -824,7 +828,8 @@ if __name__ == '__main__':
 
     # create app
     app = QtWidgets.QApplication([])
-    icon_file = os.path.join(gui_path, 'icons8-microscope-30.png')
+    # icon_file = os.path.join(gui_path, 'icons8-microscope-30.png')
+    icon_file = os.path.join(gui_path, 'IF2_spl1_icon.png')
     app.setWindowIcon(QtGui.QIcon(icon_file))
 
     # show main window

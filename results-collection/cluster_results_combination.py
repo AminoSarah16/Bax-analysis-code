@@ -175,6 +175,8 @@ if __name__ == '__main__':
 
     if cell_separation_files:
         print('unused cell separation files {}'.format(cell_separation_files))
+    else:
+        print('all cell separation files used!')
 
     # sort results by condition, replicate, file name, cell
     bax_total_overlap_results.sort(key=lambda x: ''.join(x[:4]))
