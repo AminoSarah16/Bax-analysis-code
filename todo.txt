@@ -1,0 +1,2 @@
+- Rollingball in Python (ImageJ Subtract Background)
+- make channels choosable

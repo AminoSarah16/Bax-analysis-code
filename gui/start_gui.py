@@ -13,6 +13,7 @@ import cv2
 from matplotlib import cm
 from PIL import Image  # https://pillow.readthedocs.io/en/stable/handbook/index.html
 from utils.utils import *
+from skimage import morphology
 
 
 def saveColorMapState(histogramLUTItem):
@@ -67,7 +68,7 @@ class FileSelectionGroupBox(QtWidgets.QGroupBox):
         """
 
         """
-        file = QtWidgets.QFileDialog.getOpenFileName(self, 'Open File', self.current_path, 'Measurement (*.msr);;All files (*.*)')
+        file = QtWidgets.QFileDialog.getOpenFileName(self, 'Open File', self.current_path, 'Measurement (*.msr *.obf);;All files (*.*)')
         file = file[0]
         if not file or not os.path.isfile(file):
             self.label.setText('')
@@ -276,7 +277,7 @@ class MitoDetectionWindow(QtWidgets.QWidget):
         # load mito image
         sted_stacks = read_sted_stacks_from_imspector_measurement(file)
         # mito_stacks = read_stack_from_imspector_measurement(file, 'Alexa 594_STED')
-        mito_stack = sted_stacks[0]  # mito stack is the first sted stack??
+        mito_stack = sted_stacks[0]  # mito stack is the first sted stack
         self.raw_data, self.pixel_sizes = extract_image_from_imspector_stack(mito_stack)
 
         # update
@@ -371,6 +372,15 @@ def skeletonize_and_detect_holes(mask):
 
 
 def detect_bax_structures(denoised, segment_threshold, minimal_skeleton_size, dilation_size, progress):
+    """
+    Detects Bax structures über segmentieren, skeleton berechnen, Löcher detektieren und klassifizieren
+    :param denoised:
+    :param segment_threshold:
+    :param minimal_skeleton_size:
+    :param dilation_size:
+    :param progress:
+    :return:
+    """
 
     start = time.time()
     # segmentieren mit kleineren intensity threshold
@@ -524,6 +534,9 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         self.spinbox_structures_rel_threshold = create_spinbox(0, 100, 1, self.schedule_update)
         ll.addWidget(self.spinbox_structures_rel_threshold)
 
+        self.label_structures = QtWidgets.QLabel('Det. Structures: 0')
+        ll.addWidget(self.label_structures)
+
         # structures minimal skeleton length
         ll.addWidget(QtWidgets.QLabel('Structures: min. skeleton length'))
         self.spinbox_structures_min_skel_length = create_spinbox(0, 1000, 1, self.schedule_update)
@@ -620,10 +633,9 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
             threshold = np.max(self.clean_data) * self.spinbox_structures_rel_threshold.value() / 100
             minimal_skeleton_size = self.spinbox_structures_min_skel_length.value()
             dilation_size = self.spinbox_structures_dilation_strength.value()
-            # TODO temporarily out of order (concentrating on clusters)
-            # self.classified_skeletons, self.skel_label, self.holes_statistics = detect_bax_structures(self.clean_data, threshold, minimal_skeleton_size, dilation_size, self.progress)
-            self.classified_skeletons = self.clean_data
-            self.skel_label = self.clean_data
+            self.classified_skeletons, self.skel_label, self.holes_statistics = detect_bax_structures(self.clean_data, threshold, minimal_skeleton_size, dilation_size, self.progress)
+            self.label_structures.setText('Det. Structures: {}'.format(np.amax(self.skel_label)+1))
+
 
     def save_bax_structures(self):
         """
@@ -638,7 +650,7 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
                                                    QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel)
             if answer == QtWidgets.QMessageBox.Cancel:
                 return
-        img = Image.fromarray(self.cluster_mask) # contains clusters as cluster mask
+        img = Image.fromarray(self.cluster_mask)  # contains clusters as cluster mask
         img.save(output_path, format='tiff')
 
         # save denoised
@@ -710,7 +722,7 @@ class BaxPhenotypeWindow(QtWidgets.QWidget):
         # bax stack laden
         # bax_stacks = read_stack_from_imspector_measurement(file, 'STAR RED_STED')
         sted_stacks = read_sted_stacks_from_imspector_measurement(file)
-        bax_stack = sted_stacks[1]  # mito stack is the second sted stack??
+        bax_stack = sted_stacks[1]  # bax stack is the second stack
         self.raw_data, self.pixel_sizes = extract_image_from_imspector_stack(bax_stack)
 
         # TODO if results already exists, load parameters and apply
@@ -824,7 +836,7 @@ if __name__ == '__main__':
 
     # create app
     app = QtWidgets.QApplication([])
-    icon_file = os.path.join(gui_path, 'icons8-microscope-30.png')
+    icon_file = os.path.join(gui_path, 'ring_freigestellt_IF2.png')
     app.setWindowIcon(QtGui.QIcon(icon_file))
 
     # show main window
