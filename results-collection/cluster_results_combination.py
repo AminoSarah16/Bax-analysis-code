@@ -10,8 +10,8 @@ from utils.utils import *
 CLUSTER_EXTENSION = '.cluster.tiff'
 MITO_EXTENSION = '.mito-mask.tiff'
 CELL_NAMES = 'ABCDEFGH'
-PIXEL_AREA = 0.015 * 0.015 # in µm
-AREA_THRESHOLD = 0.2 * 0.2 # in µm
+PIXEL_AREA = 0.015 * 0.015  # in µm
+AREA_THRESHOLD = 0.2 * 0.2  # in µm
 
 
 def get_condition(file):

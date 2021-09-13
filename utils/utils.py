@@ -75,15 +75,15 @@ def read_sted_stacks_from_imspector_measurement(file_path):
     im_file = obf_support.File(file_path)
     number_stacks = len(im_file.stacks)
 
-    mito_stacks = [stack for stack in im_file.stacks if 'Tom' in stack.name and 'STED' in stack.name]
-    if len(mito_stacks) != 1:
+    mito_stack = [stack for stack in im_file.stacks if 'Tom' in stack.name and 'STED' in stack.name]
+    if len(mito_stack) != 1:
         raise RuntimeError('Not exactly one Mito stack.')
 
-    bax_stacks = [stack for stack in im_file.stacks if 'Bax' in stack.name and 'STED' in stack.name]
-    if len(bax_stacks) != 1:
+    bax_stack = [stack for stack in im_file.stacks if 'Bax' in stack.name and 'STED' in stack.name]
+    if len(bax_stack) != 1:
         raise RuntimeError('Not exactly one Bax stack.')
 
-    return mito_stacks + bax_stacks
+    return mito_stack + bax_stack
 
 
 def extract_image_from_imspector_stack(stack):
@@ -103,7 +103,7 @@ def extract_image_from_imspector_stack(stack):
     data = data.astype(np.float32)
 
     # compute pixel sizes
-    lengths = stack.lengths
+    lengths = stack.lengths[::-1]
     pixel_sizes = (lengths[0] / data.shape[0] / 1e-6, lengths[1] / data.shape[1] / 1e-6)  # conversion m to µm
 
     return data, pixel_sizes

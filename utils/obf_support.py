@@ -29,12 +29,11 @@
         + Data type of OMAS_DT is not specified, it's an enum type in C++, which is stored as uint32.
       - In the future maybe:
         + Writing to OBF would in principle be possible (using the struct module)
-        + Read part (slice) of data, currently data is read all at once (impractical for very large files), use the flush points
-        + data_len_disk not yet taken into account, will crash if not all data is written
-        + read data that was stored in chunks (stack file format version 6)
-        + if there is a problem with a stack (like unknown data type, we could simply ignore the stack and print a warning instead
+        + Read part (slice) of data (use flush points), currently data is read all at once (impractical for very large files)
+        + may still crash if not all data is written in a stack (haven't seen such a stack yet)
+        + if there is a problem with a stack (like unknown data type), we could simply ignore the stack and print a warning instead
 
-  Author: Jan Keller-Findeisen (https://github.com/jkfindeisen), May 2021, MIT licensed (see ../LICENSE)
+  Author: Jan Keller-Findeisen (https://github.com/jkfindeisen), May-July 2021, MIT licensed (see LICENSE)
 """
 
 from __future__ import annotations
@@ -43,6 +42,11 @@ import struct
 import zlib
 import math
 import numpy as np
+
+# single long value
+long_fmt = '<Q'
+long_len = struct.calcsize(long_fmt)
+long_unpack = struct.Struct(long_fmt).unpack_from
 
 # file header = char[10], uint32, uint64, uint32
 file_header_fmt = '<10sIQI'
@@ -63,7 +67,7 @@ stack_footer_v1_unpack = struct.Struct(stack_footer_v1_fmt).unpack_from
 
 # stack footer version 1A = version 1 + uint32 (we only store the difference)
 stack_footer_v1a_fmt = '<I'
-stack_footer_v1a_len = stack_footer_v1_len + struct.calcsize(stack_footer_v1a_fmt)
+stack_footer_v1a_len = struct.calcsize(stack_footer_v1a_fmt)
 stack_footer_v1a_unpack = struct.Struct(stack_footer_v1a_fmt).unpack_from
 
 # OBF_SI_FRACTION = int32[2] = '2i'
@@ -71,32 +75,32 @@ stack_footer_v1a_unpack = struct.Struct(stack_footer_v1a_fmt).unpack_from
 
 # stack footer version 2 = version1A + OBF_SI_UNIT, OBF_SI_UNIT[15]
 stack_footer_v2_fmt = '<' + '18id' * 16
-stack_footer_v2_len = stack_footer_v1a_len + struct.calcsize(stack_footer_v2_fmt)
+stack_footer_v2_len = struct.calcsize(stack_footer_v2_fmt)
 stack_footer_v2_unpack = struct.Struct(stack_footer_v2_fmt).unpack_from
 
 # stack footer version 3 = version 2 + uint64, uint64
 stack_footer_v3_fmt = '<2Q'
-stack_footer_v3_len = stack_footer_v2_len + struct.calcsize(stack_footer_v3_fmt)
+stack_footer_v3_len = struct.calcsize(stack_footer_v3_fmt)
 stack_footer_v3_unpack = struct.Struct(stack_footer_v3_fmt).unpack_from
 
 # stack footer version 4 = version 3 + uint64
 stack_footer_v4_fmt = '<Q'
-stack_footer_v4_len = stack_footer_v3_len + struct.calcsize(stack_footer_v4_fmt)
+stack_footer_v4_len = struct.calcsize(stack_footer_v4_fmt)
 stack_footer_v4_unpack = struct.Struct(stack_footer_v4_fmt).unpack_from
 
 # stack footer version 5 = version 4 + uin64, uint32
 stack_footer_v5_fmt = '<QI'
-stack_footer_v5_len = stack_footer_v4_len + struct.calcsize(stack_footer_v5_fmt)
+stack_footer_v5_len = struct.calcsize(stack_footer_v5_fmt)
 stack_footer_v5_unpack = struct.Struct(stack_footer_v5_fmt).unpack_from
 
 # stack footer version 5a = version 5 + uint64
 stack_footer_v5a_fmt = '<Q'
-stack_footer_v5a_len = stack_footer_v5_len + struct.calcsize(stack_footer_v5a_fmt)
+stack_footer_v5a_len = struct.calcsize(stack_footer_v5a_fmt)
 stack_footer_v5a_unpack = struct.Struct(stack_footer_v5a_fmt).unpack_from
 
 # stack footer version 6 = version 5a + uint64, uint64
 stack_footer_v6_fmt = '<2Q'
-stack_footer_v6_len = stack_footer_v5a_len + struct.calcsize(stack_footer_v6_fmt)
+stack_footer_v6_len = struct.calcsize(stack_footer_v6_fmt)
 stack_footer_v6_unpack = struct.Struct(stack_footer_v6_fmt).unpack_from
 
 # mapping of OMAS_DT to NumPy data types (see https://numpy.org/doc/stable/user/basics.types.html)
@@ -131,6 +135,9 @@ class File:
         try:
             # open the file at the given file path
             self._file = open(file_path, 'rb')
+            self._file.seek(0, 2)  # seek to the end of the file
+            file_size = self._file.tell()
+            self._file.seek(0)
 
             # read the obf file header
             data = self._file.read(file_header_len)
@@ -140,6 +147,19 @@ class File:
 
             # read file description
             self.description = self._read_string(description_len)
+
+            # read file meta data
+            if self.format_version >= 2:
+                # read meta data position
+                file_meta_data_pos = long_unpack(self._file.read(long_len))[0]
+                self._file.seek(file_meta_data_pos)
+
+                self.meta = {}
+                key = self._read_string()
+                while len(key) > 0:
+                    value = self._read_string()
+                    self.meta[key] = value
+                    key = self._read_string()
 
             # read all the stacks
             next_stack_pos = first_stack_pos
@@ -173,7 +193,7 @@ class File:
                 # compression_level = values[50] # relatively uninteresting, we ignore it
                 name_length = values[51]
                 description_length = values[52]
-                stack._data_length = values[54]
+                stack._data_length = values[54]  # data_len_disk
                 next_stack_pos = values[55]
                 stack.name = self._read_string(name_length)
                 stack.description = self._read_string(description_length)
@@ -181,8 +201,21 @@ class File:
                 stack._data_pos = self._file.tell()
                 footer_pos = stack._data_pos + stack._data_length
 
+                # additionally we compute a dimensionality of a stack which is the number of elements in shape minus
+                # trailing single value dimensions; helps finding the 2D image stacks for example
+                dimensionality = len(stack.shape)
+                while dimensionality > 1 and stack.shape[dimensionality - 1] == 1:
+                    dimensionality -= 1
+                stack.dimensionality = dimensionality
+
+                # default footer
+                footer = {
+                    'stack_end_used_disk': file_size,
+                    'samples_written': np.prod(stack.shape),
+                    'chunk_positions': [[0, 0]]
+                }
+
                 # read and interpret stack footer (for format version >= 1)
-                footer = {}
                 if stack.format_version >= 1:
                     self._file.seek(footer_pos)
 
@@ -195,12 +228,12 @@ class File:
 
                     if stack.format_version >= 2:
                         # read version 1A part
-                        data = self._file.read(stack_footer_v1a_len - stack_footer_v1_len)
+                        data = self._file.read(stack_footer_v1a_len)
                         values = stack_footer_v1a_unpack(data)
                         footer['metadata_length'] = values[0]
 
                         # read version 2 part
-                        data = self._file.read(stack_footer_v2_len - stack_footer_v1a_len)
+                        data = self._file.read(stack_footer_v2_len)
                         values = stack_footer_v2_unpack(data)
                         stack.si_value = SIUnit(values[0:19])
                         stack.si_dimensions = []
@@ -209,31 +242,31 @@ class File:
 
                     if stack.format_version >= 3:
                         # read version 3 part
-                        data = self._file.read(stack_footer_v3_len - stack_footer_v2_len)
+                        data = self._file.read(stack_footer_v3_len)
                         values = stack_footer_v3_unpack(data)
                         footer['num_flush_points'] = values[0]
                         footer['flush_block_size'] = values[1]
 
                     if stack.format_version >= 4:
                         # read version 4 part
-                        data = self._file.read(stack_footer_v4_len - stack_footer_v3_len)
+                        data = self._file.read(stack_footer_v4_len)
                         values = stack_footer_v4_unpack(data)
                         footer['tag_dictionary_length'] = values[0]
 
                     if stack.format_version >= 5:
                         # read version 5 part
-                        data = self._file.read(stack_footer_v5_len - stack_footer_v4_len)
+                        data = self._file.read(stack_footer_v5_len)
                         values = stack_footer_v5_unpack(data)
                         footer['min_format_version'] = values[1]
 
                     if stack.format_version >= 6:
                         # read version 5a part
-                        data = self._file.read(stack_footer_v5a_len - stack_footer_v4_len)
+                        data = self._file.read(stack_footer_v5a_len)
                         values = stack_footer_v5a_unpack(data)
                         footer['stack_end_used_disk'] = values[0]
 
                         # read version 6 part
-                        data = self._file.read(stack_footer_v6_len - stack_footer_v5a_len)
+                        data = self._file.read(stack_footer_v6_len)
                         values = stack_footer_v6_unpack(data)
                         footer['samples_written'] = values[0]
                         footer['num_chunk_positions'] = values[1]
@@ -292,17 +325,15 @@ class File:
                                 key = self._read_string()
 
                     # read chunk positions
-                    if 'num_chunk_positions' in footer:
-                        length = footer['num_chunk_positions']
-                        chunk_positions = []
-                        for _ in range(length):
-                            fmt = '<2Q'
-                            data = self._file.read(struct.calcsize(fmt))
-                            values = struct.unpack_from(fmt, data)
-                            chunk_positions.append(values)
-                        footer['chunk_positions'] = chunk_positions
+                    chunk_positions = [[0, 0]]
+                    for _ in range(footer.get('num_chunk_positions', 0)):
+                        fmt = '<2Q'
+                        data = self._file.read(struct.calcsize(fmt))
+                        values = struct.unpack_from(fmt, data)
+                        chunk_positions.append(values)
+                    footer['chunk_positions'] = chunk_positions
 
-                    stack.footer = footer
+                stack.footer = footer
 
                 # append stack to list
                 self.stacks.append(stack)
@@ -349,12 +380,54 @@ class File:
         """
         Internal function. Reads the data array from a stack from the OBF file as a NumPy array and stores it as the
         _data attribute of the stack. If called a second time, will re-read the stack.
-        :param stack: A Stack object to get the meta data.
+
+        Supporting the chunked/interleaved storage of stacks with stack format version 6, this is a bit more
+        elaborate and also includes a bit of heuristic estimation of the number of compressed bytes
+        that need to be read. The problem is that the length of the last chunk of chunked data does not seem to be
+        properly specified, so the total number of bytes contained in a compressed data stack is unknown and
+        we need to workaround it.
+
+        :param stack: A Stack object containing all meta data
         """
         try:
-            # read the whole stack data
-            self._file.seek(stack._data_pos)
-            data = self._file.read(stack._data_length)
+            # read the whole stack data (works for stack format versions <= 5)
+            # self._file.seek(stack._data_pos)
+            # data = self._file.read(stack._data_length)
+
+            # with chunks (works for min_format_version 6 and also below)
+            pos = 0
+            idx = 0
+            seek_pos = stack._data_pos
+            self._file.seek(seek_pos)
+            data = []
+            if stack._compression_type == 1 and stack.footer['samples_written'] > 0:
+                # if compressed and not empty: we are not completely sure about the length of the written data
+                if 'num_chunk_positions' in stack.footer:
+                    # stack format version >= 6 (with chunks)
+                    bytes_written = min(stack.footer['samples_written']*stack.data_type().itemsize+16, stack.footer['chunk_positions'][-1][0] + stack.footer['stack_end_used_disk'] - stack.footer['chunk_positions'][-1][1])  # this is a bit heuristic and not documented but I don't want to read too much
+                    # stack.footer['chunk_positions'][-1][0] + stack.footer['stack_end_used_disk'] - stack.footer['chunk_positions'][-1][1] is the maximal number of bytes between the begin of the last chunk and the end of the data
+                    # stack.footer['samples_written']*stack.data_type().itemsize+16 is the size of the uncompressed data plus a small overhead for the zip header that is also divisible by all data type sizes in bytes
+                else:
+                    # stack format version < 6 (without chunks)
+                    bytes_written = stack._data_length
+            else:
+                # if not compressed or empty, we know the number of bytes exactly
+                bytes_written = stack.footer['samples_written'] * stack.data_type().itemsize
+
+            # read (using the algorithm outlined in the format description)==
+            while pos < bytes_written:
+                bytes_to_read = bytes_written - pos
+                if idx < len(stack.footer['chunk_positions']):
+                    if pos + bytes_to_read > stack.footer['chunk_positions'][idx][0]:  # chunk_positions[0] = logical offset, [1] = file offset
+                        bytes_to_read = stack.footer['chunk_positions'][idx][0] - pos
+                        seek_pos = stack.footer['chunk_positions'][idx][1] + stack._data_pos
+                        idx += 1
+                if bytes_to_read > 0:
+                    data.append(self._file.read(bytes_to_read))
+                self._file.seek(seek_pos)
+                pos += bytes_to_read
+
+            data = b"".join(data)  # is there a more efficient way to concatenate byte arrays?
 
             # if compressed, uncompress
             if stack._compression_type == 1:
@@ -364,6 +437,7 @@ class File:
 
             # convert to numpy array
             array = np.frombuffer(data, dtype=stack.data_type)
+            array = array[:stack.footer['samples_written']]  # not sure if this is needed anymore
 
             # reshape (with reversed shape and then reverse order of dimensions)
             array = np.reshape(array, stack.shape[::-1])
@@ -431,7 +505,7 @@ class SIUnit:
 
     def __str__(self) -> str:
         """
-        Some kind of meaningful string representation. Can still be improved.
+        Some kind of meaningful string representation. Could still be improved.
         """
         s = '{} '.format(self.scalefactor)
         for exponent, unit in zip(self.exponents, SIUnit.unitnames):
